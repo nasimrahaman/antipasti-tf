@@ -1,5 +1,7 @@
 __author__ = "Nasim Rahaman"
 
+from collections import OrderedDict
+
 
 def forward_pass(forward_function):
     """
@@ -24,15 +26,20 @@ def forward_pass(forward_function):
     return _feedforward
 
 
-def shape_inference(validate=True):
+def shape_inference(shape_inference_function):
     """
     Decorator for the `infer_output_shape` method of `Layer`. The motivation for this decorator is the same as that
     of the `forward_pass` decorator.
     """
-    def _decorator(shape_inference_function):
-        def _infer_output_shape(cls, input_shape=None):
-            if input_shape is None:
-                input_shape = cls.input_shape
-            return shape_inference_function(cls, input_shape=input_shape, validate=validate)
-        return _infer_output_shape
-    return _decorator
+
+    def _infer_output_shape(cls, input_shape=None):
+        if input_shape is None:
+            input_shape = cls.input_shape
+        return shape_inference_function(cls, input_shape=input_shape)
+
+    return _infer_output_shape
+
+
+class ParameterCollection(OrderedDict):
+    # TODO: Can of worms for another day.
+    pass
