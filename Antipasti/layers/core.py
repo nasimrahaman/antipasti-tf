@@ -143,16 +143,12 @@ class Layer(object):
         self._parameters['[LayerID:{}][{}]'.format(self.name, name)] = variable
         return variable
 
-    def infer_output_shape(self, input_shape=None, validate=True):
+    def infer_output_shape(self, input_shape=None):
         """
-        Infer output shape for given `input_shape`. If `validate` is set to true, the `input_shape` will be checked
-        for consistency.
+        Infer output shape for given `input_shape`.
 
         :type input_shape: list or list of list
         :param input_shape: Shape of the layer input(s), as a list (1 input) or a list of lists (multiple inputs).
-
-        :type validate: bool
-        :param validate: Whether to validate `input_shape`.
         """
         # This boils down to the default behaviour being to set output_shape = input_shape.
         if input_shape is None:
@@ -167,16 +163,12 @@ class Layer(object):
         """
         return input
 
-    def assign_parameters(self, parameters=None, validate=True):
+    def assign_parameters(self, parameters=None):
         """
-        Given a list of parameters (numpy arrays or tf.Variable), validate if possible/requested and assign them as
-        layer parameters.
+        Given a list of parameters (numpy arrays or tf.Variable), assign them as layer parameters.
 
         :type parameters: list
         :param parameters: List of parameters (as numpy array or tf.Variable).
-
-        :type validate: bool
-        :param validate: Whether to validate parameter shapes (if possible).
         """
         if parameters is not None:
             # TODO Parameter assignment with tf.assign. Remember that assignment is an operator in TensorFlow and needs
