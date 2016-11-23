@@ -1,6 +1,7 @@
 from .. import pyutils as py
 from .. import utils
 
+from collections import OrderedDict
 
 class Model(object):
     """The general model class."""
@@ -15,7 +16,7 @@ class Model(object):
         self._output_shape = None
 
         # Container for parameters
-        self._parameters = []
+        self._parameters = utils.ParameterCollection([])
 
         # Container for input, output and targets
         self.x = None
@@ -129,19 +130,15 @@ class Model(object):
     def parameters(self, value):
         self.assign_parameters(parameters=value)
 
-    def assign_parameters(self, parameters=None, validate=True):
+    def assign_parameters(self, parameters=None):
         raise NotImplementedError
 
-    def infer_output_shape(self, input_shape=None, validate=True):
+    def infer_output_shape(self, input_shape=None):
         """
-        Infer output shape for given `input_shape`. If `validate` is set to true, the `input_shape` will be checked
-        for consistency.
+        Infer output shape for given `input_shape`.
 
         :type input_shape: list or list of list
         :param input_shape: Shape of the layer input(s), as a list (1 input) or a list of lists (multiple inputs).
-
-        :type validate: bool
-        :param validate: Whether to validate `input_shape`.
         """
         # This boils down to the default behaviour being to set output_shape = input_shape.
         if input_shape is None:
@@ -192,18 +189,24 @@ class Model(object):
 
 class LayerTrainYard(Model):
     """Class to implement arbitrary architectures."""
-    def __init__(self, trainyard, input_shape=None):
+    def __init__(self, trainyard, input_shape=None, name=None):
         """
 
         :param trainyard:
         :param input_shape:
         """
         # TODO: Write doc
+        # Initialze superclass
+        super(LayerTrainYard, self).__init__(name=name)
+
         # Meta
         self._trainyard = None
 
-        # Assignments
+        # Assign and parse trainyard
         self.trainyard = trainyard
+
+        # Run shape inference
+        self.input_shape = input_shape
 
     @property
     def trainyard(self):
@@ -211,8 +214,18 @@ class LayerTrainYard(Model):
 
     @trainyard.setter
     def trainyard(self, value):
+        # Remove singleton sublists
+        value = py.removesingletonsublists(value)
         # TODO Clean up and check the trainyard list
         self._trainyard = value
+
+    @property
+    def parameters(self):
+        # Note that we don't use self._parameters defined in the superclass.
+        return [parameter
+                for train in self.trainyard
+                for coach in py.obj2list(train)
+                for parameter in coach.parameters]
 
     # Model.input_shape.setter must be overriden to handle e.g. multiple inputs.
     @Model.input_shape.setter
@@ -234,18 +247,58 @@ class LayerTrainYard(Model):
         self._input_shape = _input_shape
         self._output_shape = output_shape
 
-    def infer_output_shape(self, input_shape=None, validate=True):
-        # TODO
-        pass
+    def infer_output_shape(self, input_shape=None):
+        if input_shape is None:
+            input_shape = self.input_shape
+
+        # Note that if the trainyard has multiple inputs, input_shape is a list of lists.
+        intermediate_shape = input_shape
+        # Trains and coaches are legacy terminology from the old theano Antipasti.
+        # Loop over all layers or groups of layers (depth-wise)
+        for train in self.trainyard:
+
+            if isinstance(train, list):
+                # If we're in here, it's because train is a group of width-wise stacked layers
+                train_output_shape = []
+                # Convert intermediate_shape to a list of lists
+                train_input_shape = py.list2listoflists(intermediate_shape)
+                # Cursor for keeping track (see below).
+                cursor = 0
+
+                # Loop over all layers (width-wise)
+                for coach in train:
+                    # This will save a function call
+                    num_inputs_to_coach = coach.num_inputs
+                    # coach can take more than one inputs, and cursor is to keep track of how many inputs have been \
+                    # taken from train_input_shape.
+                    coach_input_shape = py.delist(train_input_shape[cursor:cursor+num_inputs_to_coach])
+                    cursor += num_inputs_to_coach
+
+                    # Assign input shape to coach
+                    coach.input_shape = coach_input_shape
+                    # Get the resulting output shape and append to the list keeping track of train output shapes
+                    train_output_shape.append(coach.output_shape)
+
+            else:
+                # If we're in here, it's because train is just a Layer (or a LayerTrainYard). Remember,
+                # intermediate_shape can be a list of lists if train takes more than one inputs.
+                train.input_shape = intermediate_shape
+                train_output_shape = train.output_shape
+
+            # Assign as intermediate shape
+            intermediate_shape = py.delist(py.delistlistoflists(py.list2listoflists(train_output_shape)))
+
+        # Done. final_shape = intermediate_shape, but we'll spare us the trouble
+        return intermediate_shape
 
     # Parameter assignment cannot be handled by the superclass
-    def assign_parameters(self, parameters=None, validate=True):
+    def assign_parameters(self, parameters=None):
         if parameters is not None:
             # TODO (See Layer.assign_parameters for potential pitfalls)
             pass
 
     # Feedforward, but without the decorator
-    def feedforward(self, input=None, validate=True):
+    def feedforward(self, input=None):
         pass
 
     # Depth-wise mechanics
