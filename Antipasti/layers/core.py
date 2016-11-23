@@ -3,25 +3,24 @@ __author__ = "Nasim Rahaman"
 import numpy as np
 import tensorflow as tf
 
-import pyutils as py
+import contextlib2 as conlib
+
+from .. import pyutils as py
+from .. import utils
 
 
-def forward_pass(forward_function):
-    """Decorator for the feedforward method of `Layer`."""
-    def _feedforward(cls, input=None):
-        # Define behaviour for when input is None:
-        if input is None:
-            input = cls.x
-        else:
-            cls.x = input
-        # Evaluate output
-        output = forward_function(cls, input=input)
-        # Assign output to y
-        cls.y = output
-        # Return output
-        return output
-    # Return decorated function
-    return _feedforward
+def shape_inference(validate=True):
+    """
+    Decorator for the `infer_output_shape` method of `Layer`. The motivation for this decorator is the same as that
+    of the `forward_pass` decorator.
+    """
+    def _decorator(shape_inference_function):
+        def _infer_output_shape(cls, input_shape=None):
+            if input_shape is None:
+                input_shape = cls.input_shape
+            return shape_inference_function(cls, input_shape=input_shape, validate=validate)
+        return _infer_output_shape
+    return _decorator
 
 
 class Layer(object):
@@ -42,6 +41,9 @@ class Layer(object):
         # Set name
         self.name = name
 
+        # Context managers to use for feeding forward
+        self.context_managers = []
+
         # "Private" variables for input and output shapes
         self._input_shape = None
         self._output_shape = None
@@ -53,13 +55,16 @@ class Layer(object):
         self.x = None
         self.y = None
 
+        # A namespace for storing arbitrary stuff (implemented as a dict for its `get` method)
+        self.collection = []
+
     @property
     def name(self):
         return str(id(self)) if self._name is None else self._name
 
     @name.setter
     def name(self, value):
-        pass
+        self._name = value
 
     def _stamp_string(self, string):
         return "[LayerID:{}] {}".format(self.name, string)
@@ -165,7 +170,7 @@ class Layer(object):
             input_shape = self.input_shape
         return input_shape
 
-    @forward_pass
+    @utils.forward_pass
     def feedforward(self, input=None):
         """
         Implements the forward pass for the layer, given its input. If the decorator forward_pass is not used, this
@@ -185,8 +190,13 @@ class Layer(object):
         :param validate: Whether to validate parameter shapes (if possible).
         """
         if parameters is not None:
-            # TODO Parameter assignment with tf.assign
+            # TODO Parameter assignment with tf.assign. Remember that assignment is an operator in TensorFlow and needs
+            # TODO to be eval'ed with a session to take effect.
             pass
+
+    def __call__(self, input):
+        """This should be remniscent of the Keras functional API."""
+        return self.feedforward(input)
 
     def __add__(self, other):
         """
