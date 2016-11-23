@@ -3,6 +3,7 @@ __author__ = "Nasim Rahaman"
 from .. import pyutils as py
 from .. import utils
 
+from collections import OrderedDict
 
 class Layer(object):
     """
@@ -30,14 +31,14 @@ class Layer(object):
         self._output_shape = None
 
         # Container for parameters
-        self._parameters = []
+        self._parameters = utils.ParameterCollection([])
 
         # Containers for input and output
         self.x = None
         self.y = None
 
         # A namespace for storing arbitrary stuff (implemented as a dict for its `get` method)
-        self.collection = []
+        self.collection = {}
 
     @property
     def name(self):
@@ -134,6 +135,13 @@ class Layer(object):
     @parameters.setter
     def parameters(self, value):
         self.assign_parameters(parameters=value)
+
+    def register_parameter(self, variable, name=None):
+        # Get variable name from variable if name is not given
+        name = name if name is not None else variable.name
+        # Write to dict
+        self._parameters['[LayerID:{}][{}]'.format(self.name, name)] = variable
+        return variable
 
     def infer_output_shape(self, input_shape=None, validate=True):
         """
