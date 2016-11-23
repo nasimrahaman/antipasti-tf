@@ -216,7 +216,10 @@ class LayerTrainYard(Model):
     def trainyard(self, value):
         # Remove singleton sublists
         value = py.removesingletonsublists(value)
-        # TODO Clean up and check the trainyard list
+        # Parse value. This is the magic Antipasti line.
+        value = [[LayerTrainYard(elem_in_elem) if isinstance(elem_in_elem, list) else elem_in_elem
+                  for elem_in_elem in elem]
+                 if isinstance(elem, list) else elem for elem in value]
         self._trainyard = value
 
     @property
@@ -299,7 +302,58 @@ class LayerTrainYard(Model):
 
     # Feedforward, but without the decorator
     def feedforward(self, input=None):
-        pass
+        # TODO Assert that trainyard not empty (need string stamper first)
+        # Check if input is given
+        if input is None:
+            self.x = input
+        else:
+            input = self.x
+
+        # The input must be set for all input layers (if there are more than one)
+        input_list = py.obj2list(input)
+        # The individual input layers may have one or more inputs. The cursor is to keep track.
+        cursor = 0
+
+        # Loop over input layers (width-wise)
+        for coach in py.obj2list(self.trainyard[0]):
+            # Get number of inputs to the coach
+            num_inputs_to_coach = coach.num_inputs
+            # Fetch from list of inputs
+            coach_input = py.delist(input_list[cursor:cursor+num_inputs_to_coach])
+            # Increment cursor
+            cursor += num_inputs_to_coach
+            # Set input
+            coach.x = coach_input
+
+        # Feedforward recursively.
+        intermediate_result = input
+        for train in self.trainyard:
+            if isinstance(train, list):
+                # Convert intermediate_result to a list
+                input_list = py.obj2list(intermediate_result)
+                # Make a cursor to index input_list
+                cursor = 0
+                # List to store outputs from coaches in train
+                coach_outputs = []
+
+                for coach in train:
+                    num_inputs_to_coach = coach.num_inputs
+                    coach_input = py.delist(input_list[cursor:cursor+num_inputs_to_coach])
+                    cursor += num_inputs_to_coach
+                    # Feedforward and store output in list
+                    coach_outputs.append(coach.feedforward(input=coach_input))
+                intermediate_result = coach_outputs
+
+            else:
+                intermediate_result = train.feedforward(input=intermediate_result)
+
+            # Flatten any recursive outputs to a linear list
+            intermediate_result = py.delist(list(py.flatten(intermediate_result)))
+
+        # The final intermediate_result is the final result (no shit sherlock)
+        self.y = intermediate_result
+        # Done.
+        return self.y
 
     # Depth-wise mechanics
     def __add__(self, other):
