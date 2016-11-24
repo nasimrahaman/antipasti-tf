@@ -1,6 +1,8 @@
 from .. import pyutils as py
 from .. import utils
 
+from ..layers import Layer
+
 from collections import OrderedDict
 
 class Model(object):
@@ -170,24 +172,24 @@ class Model(object):
         """
         Stack depth-wise.
 
-        :type other: Layer or LayerTrainYard
+        :type other: Layer or LayerTrainyard
         :param other: The other `Layer` or `Model`.
         """
-        # TODO Can be done once LayerTrainYard is defined.
+        # TODO Can be done once LayerTrainyard is defined.
         pass
 
     def __mul__(self, other):
         """
         Stack width-wise.
 
-        :type other: Layer or LayerTrainYard
+        :type other: Layer or LayerTrainyard
         :param other: The other `Layer` or `Model`.
         """
-        # TODO Can be done once LayerTrainYard is defined.
+        # TODO Can be done once LayerTrainyard is defined.
         pass
 
 
-class LayerTrainYard(Model):
+class LayerTrainyard(Model):
     """Class to implement arbitrary architectures."""
     def __init__(self, trainyard, input_shape=None, name=None):
         """
@@ -197,7 +199,7 @@ class LayerTrainYard(Model):
         """
         # TODO: Write doc
         # Initialze superclass
-        super(LayerTrainYard, self).__init__(name=name)
+        super(LayerTrainyard, self).__init__(name=name)
 
         # Meta
         self._trainyard = None
@@ -217,7 +219,7 @@ class LayerTrainYard(Model):
         # Remove singleton sublists
         value = py.removesingletonsublists(value)
         # Parse value. This is the magic Antipasti line.
-        value = [[LayerTrainYard(elem_in_elem) if isinstance(elem_in_elem, list) else elem_in_elem
+        value = [[LayerTrainyard(elem_in_elem) if isinstance(elem_in_elem, list) else elem_in_elem
                   for elem_in_elem in elem]
                  if isinstance(elem, list) else elem for elem in value]
         self._trainyard = value
@@ -283,7 +285,7 @@ class LayerTrainYard(Model):
                     train_output_shape.append(coach.output_shape)
 
             else:
-                # If we're in here, it's because train is just a Layer (or a LayerTrainYard). Remember,
+                # If we're in here, it's because train is just a Layer (or a LayerTrainyard). Remember,
                 # intermediate_shape can be a list of lists if train takes more than one inputs.
                 train.input_shape = intermediate_shape
                 train_output_shape = train.output_shape
@@ -361,11 +363,26 @@ class LayerTrainYard(Model):
 
     # Depth-wise mechanics
     def __add__(self, other):
-        pass
+        if self.num_outputs != other.num_inputs:
+            raise RuntimeError(self._stamp_string("Cannot chain component with {} output(s) with "
+                                                  "one with {} inputs.".format(self.num_outputs, other.num_inputs)))
+        # Other could be a Layer or a LayerTrainyard
+        if isinstance(other, Layer):
+            return LayerTrainyard(self.trainyard + [other])
+        elif isinstance(other, LayerTrainyard):
+            return LayerTrainyard(self.trainyard + other.trainyard)
+        else:
+            raise TypeError(self._stamp_string("Second summand of invalid type. Expected Layer or LayerTrainyard, "
+                                               "got '{}' instead.".format(other.__class__.__name__)))
 
     # Width-wise mechanics
     def __mul__(self, other):
-        pass
+        # Other could be a Layer or a LayerTrainyard
+        if not (isinstance(other, Layer) or isinstance(other, LayerTrainyard)):
+            raise TypeError(self._stamp_string("Second summand of invalid type. Expected Layer or LayerTrainyard, "
+                                               "got '{}' instead.".format(other.__class__.__name__)))
+
+        return LayerTrainyard([[self, other]])
 
     # Syntactic candy
     def __getitem__(self, item):

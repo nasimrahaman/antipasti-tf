@@ -3,6 +3,8 @@ __author__ = "Nasim Rahaman"
 from .. import pyutils as py
 from .. import utils
 
+from ..models import LayerTrainyard
+
 from collections import OrderedDict
 
 class Layer(object):
@@ -183,18 +185,32 @@ class Layer(object):
         """
         Stack depth-wise.
 
-        :type other: Layer or LayerTrainYard
-        :param other: The other `Layer` or `LayerTrainYard`.
+        :type other: Layer or LayerTrainyard
+        :param other: The other `Layer` or `LayerTrainyard`.
         """
-        # TODO Can be done once LayerTrainYard is defined.
-        pass
+
+        if self.num_outputs != other.num_inputs:
+            raise RuntimeError(self._stamp_string("Cannot chain component with {} output(s) with "
+                                                  "one with {} inputs.".format(self.num_outputs, other.num_inputs)))
+        # Other could be a Layer or a LayerTrainyard
+        if isinstance(other, Layer):
+            return LayerTrainyard([self, other])
+        elif isinstance(other, LayerTrainyard):
+            return LayerTrainyard([self] + other.trainyard)
+        else:
+            raise TypeError(self._stamp_string("Second summand of invalid type. Expected Layer or LayerTrainyard, "
+                                               "got '{}' instead.".format(other.__class__.__name__)))
 
     def __mul__(self, other):
         """
         Stack width-wise.
 
-        :type other: Layer or LayerTrainYard
-        :param other: The other `Layer` or `LayerTrainYard`.
+        :type other: Layer or LayerTrainyard
+        :param other: The other `Layer` or `LayerTrainyard`.
         """
-        # TODO Can be done once LayerTrainYard is defined.
-        pass
+        # Other could be a Layer or a LayerTrainyard
+        if not (isinstance(other, Layer) or isinstance(other, LayerTrainyard)):
+            raise TypeError(self._stamp_string("Second summand of invalid type. Expected Layer or LayerTrainyard, "
+                                               "got '{}' instead.".format(other.__class__.__name__)))
+
+        return LayerTrainyard([[self, other]])
