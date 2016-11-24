@@ -74,17 +74,36 @@ class Session(object):
         self.session = value
 
 
-def initialize_all_variables(run_init_op=True, session=None):
+def reinitialize_all_variables(run_init_op=True, session=None):
+    """
+    Reinitialize all variables and optionally, run the initialization op. Note that already initialized variables
+    will also be reinitialized, so handle with care.
+    """
     # Get initializer op
     init_op = tf.initialize_all_variables()
 
     # Run initializer op ...
     if run_init_op:
         # ... with the right session
-        if session is None:
-            session = Session.session
+        session = Session.session if session is None else session
         session.run(init_op)
 
+    return init_op
+
+
+def initialize_all_uninitialized_variables(run_init_op=True, session=None):
+    """Initialize only the uninitialized variables."""
+    # Get session
+    session = Session.session if session is None else session
+    # Get list of all uninitialzied variables
+    uninitialized_variables = [tf.get_variable(name)
+                               for name in tf.report_uninitialized_variables().eval(session=session)]
+    # Make init op
+    init_op = tf.initialize_variables(uninitialized_variables)
+    if run_init_op:
+        # Run op
+        session.run(init_op)
+    # Return init_op for the record
     return init_op
 
 
@@ -201,7 +220,7 @@ def set_value(var, value, session=None):
     # Check if assign_placeholder and op are defined
     if var._antipasti_collection.get('assign_placeholder') is None:
         _placeholder = var._antipasti_collection['assign_placeholder'] = tf.placeholder(dtype, shape=value.shape)
-        _assign_op = var._antipasti_collection['assign_op'] = var.assign(_placeholder)
+        var._antipasti_collection['assign_op'] = var.assign(_placeholder)
 
     # Figure out which session to use
     if session is None:
@@ -221,6 +240,8 @@ def get_value(var, session=None):
 
 
 def placeholder(dtype, shape=None, name=None, device=None, variable_scope=None, context_managers=None):
+    """Makes a tensorflow placeholder."""
+
     # Prepare context managers
     context_managers = [] if context_managers is None else context_managers
     more_context_managers = ([tf.device(device)] if device is not None else []) + \
