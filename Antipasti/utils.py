@@ -1,6 +1,7 @@
 __author__ = "Nasim Rahaman"
 
 from collections import OrderedDict
+from contextlib2 import ExitStack
 
 
 def forward_pass(forward_function):
@@ -38,6 +39,26 @@ def shape_inference(shape_inference_function):
         return shape_inference_function(cls, input_shape=input_shape)
 
     return _infer_output_shape
+
+
+def call_in_managers(context_managers=None):
+    """
+    Decorator factory that makes a decorator to call the decorated function within nested `context_managers`.
+
+    :type context_managers: list
+    :param context_managers: List of context managers to nest over. The first manager in list is entered first.
+    """
+    def _decorator(function):
+        def decorated_function(*args, **kwargs):
+            with ExitStack as stack:
+                # Enter managers
+                for manager in context_managers:
+                    stack.enter_context(manager)
+                # Evaluate function
+                output = function(*args, **kwargs)
+            return output
+        return decorated_function
+    return _decorator
 
 
 class ParameterCollection(OrderedDict):
