@@ -3,6 +3,8 @@ __author__ = "Nasim Rahaman"
 from collections import OrderedDict
 from contextlib2 import ExitStack
 
+from . import pyutils as py
+
 
 def forward_pass(forward_function):
     """
@@ -59,6 +61,38 @@ def call_in_managers(context_managers=None):
             return output
         return decorated_function
     return _decorator
+
+
+def get_input_shape(dimensions=None, known_input_shape=None, num_features_in=None, batch_size=None,
+                    _string_stamper=None):
+    """Deduce input_shape (in NHWC (byxc) or NDHWC (bzyxc) format) from what's known."""
+
+    if _string_stamper is None:
+        _string_stamper = lambda s: s
+
+    _dimension_to_tensor_dimension = {2: 4, 3: 5}
+
+    # If an input shape is given:
+    if known_input_shape is None:
+        assert dimensions is not None, _string_stamper("Need `dimensions` argument to infer input_shape.")
+        known_input_shape = [None for _ in range(_dimension_to_tensor_dimension[dimensions])]
+
+    assert len(known_input_shape) == 4 or len(known_input_shape) == 5, \
+        _string_stamper("input_shape must be 4 or 5 elements long, not {}.".format(len(known_input_shape)))
+
+    if num_features_in is not None:
+        assert known_input_shape[-1] is None or known_input_shape[-1] == num_features_in, \
+            _string_stamper("Given number of input features ({}) is not consistent with the given input_shape "
+                            "(expecting {} input features).".format(num_features_in, known_input_shape[-1]))
+        known_input_shape[-1] = num_features_in
+
+    if batch_size is not None:
+        assert known_input_shape[0] is None or known_input_shape[0] == batch_size, \
+            _string_stamper("Given number of input features ({}) is not consistent with the given input_shape "
+                            "(expecting {} input features).".format(num_features_in, known_input_shape[-1]))
+        known_input_shape[0] = batch_size
+
+    return known_input_shape
 
 
 class ParameterCollection(OrderedDict):
