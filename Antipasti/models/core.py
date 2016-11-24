@@ -302,12 +302,16 @@ class LayerTrainYard(Model):
 
     # Feedforward, but without the decorator
     def feedforward(self, input=None):
-        # TODO Assert that trainyard not empty (need string stamper first)
         # Check if input is given
         if input is None:
             self.x = input
         else:
             input = self.x
+
+        # If trainyard empty: nothing to do, return input
+        if not self.trainyard:
+            self.y = input
+            return self.y
 
         # The input must be set for all input layers (if there are more than one)
         input_list = py.obj2list(input)
