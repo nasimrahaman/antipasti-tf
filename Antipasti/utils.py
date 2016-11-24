@@ -41,5 +41,6 @@ def shape_inference(shape_inference_function):
 
 
 class ParameterCollection(OrderedDict):
+    """Class to collect parameters of a layer."""
     # TODO: Can of worms for another day.
     pass
