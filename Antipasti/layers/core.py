@@ -38,7 +38,7 @@ class Layer(object):
         self.y = None
 
         # A namespace for storing arbitrary stuff (implemented as a dict for its `get` method)
-        self.collection = {}
+        self._antipasti_collection = {}
 
     @property
     def name(self):

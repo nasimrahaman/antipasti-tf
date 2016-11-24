@@ -33,7 +33,7 @@ class Model(object):
         self.updates = []
 
         # Namespace for storing arbitrary stuff
-        self.collection = []
+        self._antipasti_collection = []
 
     @property
     def name(self):
