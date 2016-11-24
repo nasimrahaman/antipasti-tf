@@ -2,10 +2,10 @@ __author__ = "Nasim Rahaman"
 
 from .. import pyutils as py
 from .. import utils
-
 from ..models import LayerTrainyard
 
 from collections import OrderedDict
+
 
 class Layer(object):
     """
