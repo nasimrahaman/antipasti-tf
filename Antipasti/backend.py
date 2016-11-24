@@ -5,6 +5,9 @@ __doc__ = """
           """
 
 import types
+from contextlib2 import ExitStack
+
+import numpy as np
 import tensorflow as tf
 
 
@@ -71,6 +74,20 @@ class Session(object):
         self.session = value
 
 
+def initialize_all_variables(run_init_op=True, session=None):
+    # Get initializer op
+    init_op = tf.initialize_all_variables()
+
+    # Run initializer op ...
+    if run_init_op:
+        # ... with the right session
+        if session is None:
+            session = Session.session
+        session.run(init_op)
+
+    return init_op
+
+
 # ------------------- DATATYPE-UTILITIES -------------------
 
 
@@ -83,7 +100,7 @@ def is_string_dtype(dtype):
 
     :rtype: bool
     """
-    return dtype in _DATATYPES
+    return dtype in [dt for dt in _DATATYPES if not dt.endswith('_ref')]
 
 
 def is_tf_dtype(dtype):
@@ -107,11 +124,23 @@ def to_tf_dtype(dtype):
     return getattr(tf, dtype)
 
 
+def unref_tf_dtype(dtype):
+    """Converts e.g. tf.float32_ref to tf.float32."""
+    # Make sure dtype is a tf.dtype
+    dtype = to_tf_dtype(dtype)
+    # Check if '_ref' in name
+    if dtype.name.endswith('_ref'):
+        dtype_str = dtype.name[:-4]
+        return to_tf_dtype(dtype_str)
+    else:
+        return dtype
+
+
 # ------------------- VARIABLES-AND-TENSORS -------------------
 
 
 # Make variable
-def variable(value, dtype=_FLOATX, **tf_variable_kwds):
+def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_managers=None, **tf_variable_kwds):
     """
     Makes a tensorflow Variable.
 
@@ -121,6 +150,14 @@ def variable(value, dtype=_FLOATX, **tf_variable_kwds):
     :type dtype: str or Any
     :param dtype: Datatype of the initialized tensor
 
+    :type device: str
+    :param device: String specifying where to place the variable.
+
+    :type variable_scope: str
+    :param variable_scope: Variable scope to define the variable in.
+
+    :type context_managers: list
+    :param context_managers: list of context managers to define the variable in.
 
     :type tf_variable_kwds: dict
     :param tf_variable_kwds: Dictionary of keyword arguments to send to the tensorflow variable constructor.
@@ -128,18 +165,74 @@ def variable(value, dtype=_FLOATX, **tf_variable_kwds):
     :rtype: tensorflow.Variable
     :return: a tensorflow variable
     """
+
+    # Prepare context managers
+    context_managers = [] if context_managers is None else context_managers
+    more_context_managers = ([tf.device(device)] if device is not None else []) + \
+                            ([tf.variable_scope(variable_scope)] if variable_scope is not None else [])
+    all_context_managers = more_context_managers + context_managers
+
+    # Set up keyword args for the tf.Variable call
     tf_variable_kwds.update({'initial_value': value})
-    var = tf.Variable(dtype=to_tf_dtype(dtype), **tf_variable_kwds)
+    with ExitStack as stack:
+        # Enter managers
+        for manager in all_context_managers:
+            stack.enter_context(manager)
+        # Make variable
+        var = tf.Variable(dtype=to_tf_dtype(dtype), **tf_variable_kwds)
+
     # Ah, habits from the good ol' theano days
     var._antipasti_set_value = types.MethodType(set_value, var)
     var._antipasti_get_value = types.MethodType(get_value, var)
+    var._antipasti_collection = {}
     return var
 
 
-# Set variable value
-def set_value(variable, value, session=None):
-    pass
+def set_value(var, value, session=None):
+    """
+    Set variable value. Also available as an attribute (to variable) if the variable was created with the `variable`
+    function (in scope).
+    """
+    # Make sure value is an array
+    value = np.asarray(value)
+    # Get variable data type
+    dtype = unref_tf_dtype(var.dtype)
+
+    # Check if assign_placeholder and op are defined
+    if var._antipasti_collection.get('assign_placeholder') is None:
+        _placeholder = var._antipasti_collection['assign_placeholder'] = tf.placeholder(dtype, shape=value.shape)
+        _assign_op = var._antipasti_collection['assign_op'] = var.assign(_placeholder)
+
+    # Figure out which session to use
+    if session is None:
+        session = Session.session
+
+    # Run assign op
+    session.run(var._antipasti_collection['assign_op'],
+                feed_dict={var._antipasti_collection['assign_placeholder']: value})
 
 
-def get_value(variable, session=None):
-    pass
+def get_value(var, session=None):
+    """
+    Get variable value. Also available as an attribute (to variable) if the variable was created with the `variable`
+    function (in scope).
+    """
+    return var.eval(session=(session if session is not None else Session.session))
+
+
+def placeholder(dtype, shape=None, name=None, device=None, variable_scope=None, context_managers=None):
+    # Prepare context managers
+    context_managers = [] if context_managers is None else context_managers
+    more_context_managers = ([tf.device(device)] if device is not None else []) + \
+                            ([tf.variable_scope(variable_scope)] if variable_scope is not None else [])
+    all_context_managers = more_context_managers + context_managers
+
+    with ExitStack as stack:
+        # Enter all context managers
+        for manager in all_context_managers:
+            stack.enter_context(manager)
+        # Define variable
+        ph = tf.placeholder(dtype, shape=shape, name=name)
+
+    # Return placeholder
+    return ph
