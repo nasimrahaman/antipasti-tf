@@ -274,8 +274,8 @@ class DictList(OrderedDict):
     """
 
     def __init__(self, item_list, **kwds):
-        # Try to make item_list compatible
-        item_list = self._make_compatible(item_list)
+        # Try to make item_list compatible without looking for key conflicts
+        item_list = self._make_compatible(item_list, find_key_conflicts=False)
         # Init superclass
         super(DictList, self).__init__(item_list, **kwds)
         # Raise exception if non-string found in keys
@@ -319,9 +319,9 @@ class DictList(OrderedDict):
         # Done.
         return code
 
-    def _make_compatible(self, obj):
-        # Get compatibility code
-        code = self._is_compatible(obj, find_key_conflicts=False)
+    def _make_compatible(self, obj, find_key_conflicts=True):
+        # Get compatibility code.
+        code = self._is_compatible(obj, find_key_conflicts=find_key_conflicts)
 
         # Convert code 3
         if code == 3:
