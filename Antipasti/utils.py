@@ -3,7 +3,14 @@ __author__ = "Nasim Rahaman"
 from collections import OrderedDict
 from contextlib2 import ExitStack
 
-from . import pyutils as py
+import random
+import string
+
+try:
+    from . import pyutils as py
+except ValueError:
+    # Try to import as a standalone
+    import pyutils as py
 
 
 def forward_pass(forward_function):
@@ -260,10 +267,117 @@ def vectorize_function(_string_stamper=None):
     return _vectorize_function
 
 
-pass
+class DictList(OrderedDict):
+    """
+    This class brings some of the list goodies to OrderedDict (including number indexing), with the caveat that
+    keys are only allowed to be strings.
+    """
+
+    def __init__(self, item_list, **kwds):
+        # Try to make item_list compatible
+        item_list = self._make_compatible(item_list)
+        # Init superclass
+        super(DictList, self).__init__(item_list, **kwds)
+        # Raise exception if non-string found in keys
+        if not all([isinstance(key, str) for key in self.keys()]):
+            raise TypeError("Keys in a DictList must be string.")
+
+    def __setitem__(self, key, value, dict_setitem=dict.__setitem__):
+        # This method is overridden to intercept keys and check whether they're strings
+        if not isinstance(key, str):
+            raise TypeError("Keys in a DictList must be strings.")
+        super(DictList, self).__setitem__(key, value, dict_setitem=dict_setitem)
+
+    def __getitem__(self, item):
+        # This is where things get interesting. This function is overridden to enable number indexing.
+        if not isinstance(item, (str, int, slice)):
+            raise TypeError("DictList indices must be slices, integers "
+                            "or strings, not {}.".format(item.__class__.__name__))
+        # Case one: item is a string
+        if isinstance(item, str):
+            # Fall back to the superclass' getitem
+            return super(DictList, self).__getitem__(item)
+        else:
+            # item is an integer. Fetch from list and return
+            return self.values()[item]
+
+    def _is_compatible(self, obj, find_key_conflicts=True):
+        """Checks if a given object is convertable to OrderedDict."""
+        # Check types
+        if isinstance(obj, (OrderedDict, DictList, dict)):
+            code = 1
+        elif isinstance(obj, list):
+            code = 2 if all([py.smartlen(elem) == 2 for elem in obj]) else 3
+        else:
+            code = 0
+
+        # Check for key conflicts
+        if find_key_conflicts and (code == 1 or code == 2):
+            if not set(self.keys()) - set(OrderedDict(obj).keys()):
+                # Key conflict found, obj not compatible
+                code = 0
+        # Done.
+        return code
+
+    def _make_compatible(self, obj):
+        # Get compatibility code
+        code = self._is_compatible(obj, find_key_conflicts=False)
+
+        # Convert code 3
+        if code == 3:
+            compatible_obj = []
+            for elem in obj:
+                taken_keys = zip(*compatible_obj)[0] if compatible_obj else None
+                generated_id = self._generate_id(taken_keys=taken_keys)
+                compatible_obj.append((generated_id, elem))
+            obj = compatible_obj
+        elif code == 1 or code == 2:
+            # Object is compatible already, nothing to do here.
+            pass
+        else:
+            raise ValueError("Object could not be made compatible with DictList.")
+
+        return obj
+
+    def append(self, x):
+        # This is custom behaviour.
+        # This method 'appends' x to the dict, but without a given key.
+        # This is done by setting str(id(x)) as the dict key.
+        self.update({self._generate_id(taken_keys=self.keys()): x})
+
+    def extend(self, t):
+        # Try to make t is compatible
+        t = self._make_compatible(t)
+        # Convert t to list, and piggy back on the superclass' update method
+        self.update(list(t))
+
+    def __add__(self, other):
+        # Enable list concatenation with +
+        # Try to make other compatible
+        self._make_compatible(other)
+        # Use OrderedDict constructor
+        return DictList(self.items() + list(other))
+
+    @staticmethod
+    def _generate_id(taken_keys=None):
+        _SIZE = 10
+        taken_keys = [] if taken_keys is None else taken_keys
+
+        while True:
+            generated_id = ''.join(random.SystemRandom().choice(string.ascii_lowercase + string.digits)
+                                   for _ in range(_SIZE))
+            # If generated_id is not taken, break and return, otherwise, retry.
+            if generated_id not in taken_keys:
+                return generated_id
+            else:
+                continue
 
 
 class ParameterCollection(OrderedDict):
     """Class to collect parameters of a layer."""
     # TODO: Can of worms for another day.
+    pass
+
+
+if __name__ == '__main__':
     pass
