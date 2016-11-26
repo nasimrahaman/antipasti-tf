@@ -63,10 +63,10 @@ def call_in_managers(context_managers=None):
     return _decorator
 
 
-def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, num_features_in=None, batch_size=None,
+# This function is best left folded.
+def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, num_features_in=None,
                     _string_stamper=None, default_dimensions=2, default_num_inputs=1):
     """Deduce input_shape (in NHWC (byxc) or NDHWC (bzyxc) format) from what's known."""
-
     if _string_stamper is None:
         _string_stamper = lambda s: s
 
@@ -92,8 +92,8 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
                 # In this case, replace None's with the default_dimensions. But before proceeding, we need to be sure
                 # that default_dimensions itself is a list.
                 if not isinstance(default_dimensions, list):
-                    # If it's not a list, use the known num_inputs to make it one
-                    default_dimensions = py.obj2list(default_dimensions) * num_inputs
+                    # If it's not a list, use the known num_inputs to broadcast it to one
+                    default_dimensions = py.broadcast(default_dimensions, num_inputs)
                 else:
                     # If it's already a list, make sure it has the right length
                     assert len(default_dimensions) == num_inputs, \
@@ -123,7 +123,7 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
                                         "while the latter is {}.".format(len(dimensions), num_inputs))
                 else:
                     # dimensions still isn't a list, so we make it one. This defines the broadcasting behaviour.
-                    dimensions = py.obj2list(dimensions) * num_inputs
+                    dimensions = py.broadcast(dimensions, num_inputs)
                     # Now we need to guarantee that default_dimensions is a list as well
                     if isinstance(default_dimensions, list):
                         # Ok, so default_dimensions is already a list. Make sure it's consistent with num_inputs
@@ -133,7 +133,7 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
                                             "consistent with the given `default_num_inputs`?")
                     else:
                         # So default_dimensions is not a list, so we make it one
-                        default_dimensions = py.obj2list(default_dimensions) * num_inputs
+                        default_dimensions = py.broadcast(default_dimensions, num_inputs)
 
             # Get final dimensions list. Look for None's in there and replace with defaults
             dimensions = [dimension if dimension is not None else default_dimension
@@ -150,7 +150,7 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
                                     "which is {}.".format(len(dimensions), num_inputs))
             else:
                 # num_inputs is given, but dimensions is not a list. So let's make it one!
-                dimensions = py.obj2list(dimensions) * num_inputs
+                dimensions = py.broadcast(dimensions, num_inputs)
 
         # Cobble together an input shape given what we know
         known_input_shape = py.delistlistoflists([[None for _ in range(_dimension_to_tensor_dimension[dimension])]
@@ -163,22 +163,52 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
         derived_dimensions = map(lambda x: _tensor_dimension_to_dimension[x], derived_tensor_dimensions) \
             if isinstance(derived_tensor_dimensions, list) \
             else _tensor_dimension_to_dimension[derived_tensor_dimensions]
-        # TODO Continue
 
-    assert len(known_input_shape) == 4 or len(known_input_shape) == 5, \
-        _string_stamper("input_shape must be 4 or 5 elements long, not {}.".format(len(known_input_shape)))
+        # Check if the derivced num_input is consistent with num_inputs if given
+        if num_inputs is not None:
+            assert num_inputs == derived_num_inputs, \
+                _string_stamper("The given number of inputs `num_inputs` (= {}) is not consistent with "
+                                "the one derived from the given input shape `known_input_shape` "
+                                "(= {}).".format(num_inputs, derived_num_inputs))
+        else:
+            # Set num_inputs
+            num_inputs = derived_num_inputs
+        # Check if the derived dimensions is consistent with the given dimensions (if given)
+        if dimensions is not None:
+            assert all([dimension == derived_dimension for dimension, derived_dimension
+                        in zip(py.broadcast(dimensions, py.smartlen(derived_dimensions)),
+                               py.obj2list(derived_dimensions))]), \
+                _string_stamper("Given `dimensions` (= {}) is not consistent "
+                                "with the one derived from the given input shape "
+                                "`known_input_shape`.".format(dimensions, derived_dimensions))
+        else:
+            dimensions = derived_dimensions
 
     if num_features_in is not None:
-        assert known_input_shape[-1] is None or known_input_shape[-1] == num_features_in, \
-            _string_stamper("Given number of input features ({}) is not consistent with the given input_shape "
-                            "(expecting {} input features).".format(num_features_in, known_input_shape[-1]))
-        known_input_shape[-1] = num_features_in
+        if py.islistoflists(known_input_shape):
+            # Broadcast num_features_in
+            num_features_in = py.broadcast(num_features_in, len(known_input_shape)) \
+                if py.smartlen(num_features_in) != len(known_input_shape) else num_features_in
 
-    if batch_size is not None:
-        assert known_input_shape[0] is None or known_input_shape[0] == batch_size, \
-            _string_stamper("Given number of input features ({}) is not consistent with the given input_shape "
-                            "(expecting {} input features).".format(num_features_in, known_input_shape[-1]))
-        known_input_shape[0] = batch_size
+            # Loop over input indices and set num_features_in in known_input_shape
+            # (no need to worry about dimensions - that's why I'm starting to love the b01c format)
+            for input_idx in range(len(num_features_in)):
+                if known_input_shape[input_idx][-1] is None:
+                    known_input_shape[input_idx][-1] = num_features_in[input_idx]
+                else:
+                    assert known_input_shape[input_idx][-1] == num_features_in[input_idx], \
+                        _string_stamper("Given number of input features (= {}) for input "
+                                        "indexed {} is not consistent with its expected "
+                                        "shape {} (= {}).".format(num_features_in[input_idx],
+                                                                  input_idx, known_input_shape[input_idx],
+                                                                  known_input_shape[input_idx][-1]))
+
+        else:
+            # Expecting just one input - easy peasy
+            assert known_input_shape[-1] is None or known_input_shape[-1] == num_features_in, \
+                _string_stamper("Given number of input features ({}) is not consistent with the given input_shape "
+                                "(expecting {} input features).".format(num_features_in, known_input_shape[-1]))
+            known_input_shape[-1] = num_features_in
 
     return known_input_shape
 
@@ -206,7 +236,7 @@ def vectorize_function(_string_stamper=None):
                                                                                          "/ vectorize function.")
 
             # Broadcast arguments
-            broadcasted_args = [arg if py.smartlen(arg) == vector_length else py.obj2list(arg) * vector_length
+            broadcasted_args = [arg if py.smartlen(arg) == vector_length else py.broadcast(arg, vector_length)
                                 for arg in args]
 
             # Broadcast keyword arguments <unreadable python-fu>
@@ -228,6 +258,9 @@ def vectorize_function(_string_stamper=None):
         return _function
 
     return _vectorize_function
+
+
+pass
 
 
 class ParameterCollection(OrderedDict):

@@ -148,6 +148,18 @@ def updatedictlist(list1, list2):
     return dict1.items()
 
 
+def broadcast(obj, numtimes):
+    # Check if obj is a list already
+    if smartlen(obj) == numtimes:
+        # Nothing to broadcast, go home
+        return obj
+    elif smartlen(obj) == 1:
+        # Single element in a list. Broadcast away!
+        return obj2list(obj) * numtimes
+    else:
+        raise ValueError("Cannot broadcast list of shape {} to {}.".format(smartlen(obj), numtimes))
+
+
 # Function to migrate attributes from one instance of a class to another. This was written to be used for weight
 # sharing.
 def migrateattributes(source, target, attributes):
