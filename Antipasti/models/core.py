@@ -82,7 +82,7 @@ class Model(object):
         :rtype: int
         """
         # Observe that num_inputs = 1 when self.input_shape = None (legacy behaviour)
-        return 1 if py.islistoflists(self.input_shape) else len(self.input_shape)
+        return 1 if not py.islistoflists(self.input_shape) else len(self.input_shape)
 
     @property
     def num_outputs(self):
@@ -92,7 +92,7 @@ class Model(object):
         :rtype: int
         """
         # Observe that num_outputs = 1 when self.input_shape = None (legacy behaviour)
-        return 1 if py.islistoflists(self.output_shape) else len(self.output_shape)
+        return 1 if not py.islistoflists(self.output_shape) else len(self.output_shape)
 
     @property
     def input_dimensions(self):
