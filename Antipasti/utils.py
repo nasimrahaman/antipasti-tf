@@ -373,10 +373,31 @@ class DictList(OrderedDict):
                 continue
 
 
-class ParameterCollection(OrderedDict):
+class ParameterCollection(DictList):
     """Class to collect parameters of a layer."""
     # TODO: Can of worms for another day.
-    pass
+    def __getitem__(self, item):
+        # Check if item is a parameter tag
+        if self._is_parameter_tag(item):
+            layer_id, parameter_name = self._split_parameter_tag(item)
+            # TODO continue
+        else:
+            # Let the superclass handle this
+            return super(ParameterCollection, self).__getitem__(item)
+        pass
+
+    @staticmethod
+    def _is_parameter_tag(tag):
+        return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
+
+    @staticmethod
+    def _split_parameter_tag(tag):
+        # First, strip the exterior square brackets
+        layer_id_tag, parameter_name = tag.strip('[]').split('][')
+        # Get layer ID from tag
+        layer_id = layer_id_tag[9:]
+        # Done
+        return layer_id, parameter_name
 
 
 if __name__ == '__main__':
