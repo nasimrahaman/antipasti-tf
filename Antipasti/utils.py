@@ -376,22 +376,74 @@ class DictList(OrderedDict):
 class ParameterCollection(DictList):
     """Class to collect parameters of a layer."""
     # TODO: Can of worms for another day.
+    def __init__(self, item_list, **kwds):
+        # Initialize superclass
+        super(ParameterCollection, self).__init__(item_list, **kwds)
+        # Validate contents of the built
+        self._validate_items()
+
     def __getitem__(self, item):
-        # Check if item is a parameter tag
-        if self._is_parameter_tag(item):
-            layer_id, parameter_name = self._split_parameter_tag(item)
-            # TODO continue
+        # Check if item is a string to start with
+
+        if isinstance(item, str):
+            # So far so good. Now check whether it's a parameter tag
+            if self._is_parameter_tag(item):
+                return super(ParameterCollection, self).__getitem__(item)
+            else:
+                # FIXME This is about as inefficient as it gets. I know, a few seconds do not matter
+                # FIXME if you're training a network, but there has to be a better way
+                # FIXME (e.g. caching names and layer_id's).
+                # Check if it's a parameter name.
+                names_found = self.find(parameter_name=item)
+                # Check if it's a layer id
+                layers_found = self.find(layer_id=item)
+                # Check if item is both a layerID and parameter name
+                if bool(names_found) ^ bool(layers_found):
+                    return py.delist(names_found) if names_found else py.delist(layers_found)
+                else:
+                    # item is both a layerID and parameter name
+                    # TODO Add error message
+                    raise KeyError("")
         else:
-            # Let the superclass handle this
+            # Let the superclass handle this mess
             return super(ParameterCollection, self).__getitem__(item)
         pass
+
+    def find(self, layer_id=None, parameter_name=None):
+        # Enforce early stopping if both layer_id and parameter_name is given
+        stop_when_found = layer_id is not None and parameter_name is not None
+        # Instantiate a list to put search results in
+        found = []
+        # Search
+        for item_key, item_value in self.items():
+            current_layer_id, current_parameter_name = self._split_parameter_tag(item_key, check=True)
+            # Check if there's a match
+            layer_id_match = True if layer_id is None else layer_id == current_layer_id
+            parameter_name_match = True if parameter_name is None else parameter_name == current_parameter_name
+            # Append to found if there is a match, keep looking otherwise
+            if layer_id_match and parameter_name_match:
+                found.append(item_value)
+                if stop_when_found:
+                    break
+            else:
+                continue
+        # Done
+        return found
+
+    def _validate_items(self, items=None):
+        # Use items in the dict if items is not given
+        items = self.items() if items is None else items
+        for item_key, item_value in items:
+            if not self._is_parameter_tag(item_key):
+                raise ValueError("Key {} is not a valid parameter tag.".format(item_key))
 
     @staticmethod
     def _is_parameter_tag(tag):
         return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
 
-    @staticmethod
-    def _split_parameter_tag(tag):
+    def _split_parameter_tag(self, tag, check=False):
+        if check:
+            assert self._is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
         # First, strip the exterior square brackets
         layer_id_tag, parameter_name = tag.strip('[]').split('][')
         # Get layer ID from tag
