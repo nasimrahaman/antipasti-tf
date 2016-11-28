@@ -124,13 +124,15 @@ def unflatten(l, lenlist):
 
 
 def delistlistoflists(l):
-    newlist = []
-    for elem in l:
-        if not islistoflists(elem):
-            newlist.append(elem)
+    if islistoflists(l):
+        # Delist
+        if len(l) == 1:
+            return l[0]
         else:
-            newlist += elem
-    return newlist
+            return l
+    else:
+        # Don't delist
+        return l
 
 
 def islistoflists(l):
@@ -151,8 +153,8 @@ def updatedictlist(list1, list2):
 def broadcast(obj, numtimes):
     # Check if obj is a list already
     if smartlen(obj) == numtimes:
-        # Nothing to broadcast, go home
-        return obj
+        # Nothing to broadcast; make sure object is a list and go home
+        return obj2list(obj)
     elif smartlen(obj) == 1:
         # Single element in a list. Broadcast away!
         return obj2list(obj) * numtimes
