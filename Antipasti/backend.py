@@ -239,7 +239,7 @@ def get_value(var, session=None):
     return var.eval(session=(session if session is not None else Session.session))
 
 
-def placeholder(dtype, shape=None, name=None, device=None, variable_scope=None, context_managers=None):
+def placeholder(dtype=_FLOATX, shape=None, name=None, device=None, variable_scope=None, context_managers=None):
     """Makes a tensorflow placeholder."""
 
     # Prepare context managers
@@ -253,7 +253,7 @@ def placeholder(dtype, shape=None, name=None, device=None, variable_scope=None, 
         for manager in all_context_managers:
             stack.enter_context(manager)
         # Define variable
-        ph = tf.placeholder(dtype, shape=shape, name=name)
+        ph = tf.placeholder(to_tf_dtype(dtype), shape=shape, name=name)
 
     # Return placeholder
     return ph
