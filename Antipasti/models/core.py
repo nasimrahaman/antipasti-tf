@@ -1,8 +1,6 @@
 from .. import pyutils as py
 from .. import utils
 
-from ..layers import Layer
-
 
 class Model(object):
     """The general model class."""

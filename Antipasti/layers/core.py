@@ -2,7 +2,7 @@ __author__ = "Nasim Rahaman"
 
 from .. import pyutils as py
 from .. import utils
-from ..models import LayerTrainyard
+from ..models.tree import LayerTrainyard
 
 
 class Layer(object):
@@ -10,6 +10,8 @@ class Layer(object):
     Abstract Layer class. This class implements basic layer mechanics (addition and multiplication) in addition to
     parameter value assignment.
     """
+    # WARNING: Renaming 'Layer' would break Antipasti.models.tree.LayerTrainyard.__add__ and
+    # Antipasti.models.tree.LayerTrainyard.__mul__. Be sure to make the necessary changes there.
     def __init__(self, name=None):
         """
         Constructor for the Layer superclass.

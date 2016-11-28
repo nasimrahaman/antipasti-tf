@@ -1,5 +1,6 @@
+from inspect import getmro
+
 from .. import pyutils as py
-from ..layers import Layer
 from ..models import Model
 
 
@@ -181,7 +182,9 @@ class LayerTrainyard(Model):
             raise RuntimeError(self._stamp_string("Cannot chain component with {} output(s) with "
                                                   "one with {} inputs.".format(self.num_outputs, other.num_inputs)))
         # Other could be a Layer or a LayerTrainyard
-        if isinstance(other, Layer):
+        # The 'getmro' function is used because Layer could not be imported (that would introduce a circular
+        # dependency). As a quick reminder, getmro(self) = ('')
+        if 'Layer' in getmro(other.__class__):
             return LayerTrainyard(self.trainyard + [other])
         elif isinstance(other, LayerTrainyard):
             return LayerTrainyard(self.trainyard + other.trainyard)
@@ -192,7 +195,7 @@ class LayerTrainyard(Model):
     # Width-wise mechanics
     def __mul__(self, other):
         # Other could be a Layer or a LayerTrainyard
-        if not (isinstance(other, Layer) or isinstance(other, LayerTrainyard)):
+        if not ('Layer' in getmro(other.__class__) or isinstance(other, LayerTrainyard)):
             raise TypeError(self._stamp_string("Second summand of invalid type. Expected Layer or LayerTrainyard, "
                                                "got '{}' instead.".format(other.__class__.__name__)))
 
