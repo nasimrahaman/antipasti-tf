@@ -12,12 +12,21 @@ class Layer(object):
     """
     # WARNING: Renaming 'Layer' would break Antipasti.models.tree.LayerTrainyard.__add__ and
     # Antipasti.models.tree.LayerTrainyard.__mul__. Be sure to make the necessary changes there.
-    def __init__(self, name=None):
+    def __init__(self, name=None, device=None, variable_scope=None, context_mangers=None):
         """
         Constructor for the Layer superclass.
 
         :type name: str
         :param name: Layer name (optional)
+
+        :type device: str
+        :param device: Device to place the layer on.
+
+        :type variable_scope: str
+        :param variable_scope: Name of the tensorflow varaible scope
+
+        :type context_mangers: list
+        :param context_mangers: List of context managers within which this layer is to be built.
         """
 
         # "Private" variable for name
@@ -25,8 +34,14 @@ class Layer(object):
         # Set name
         self.name = name
 
+        # Set device
+        self.device = device
+
+        # Set variable scope
+        self.variable_scope = variable_scope
+
         # Context managers to use for feeding forward
-        self.context_managers = []
+        self.context_managers = context_mangers if context_mangers is not None else []
 
         # "Private" variables for input and output shapes
         self._input_shape = None
