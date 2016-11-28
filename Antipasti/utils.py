@@ -6,6 +6,8 @@ from contextlib2 import ExitStack
 import random
 import string
 
+from . import backend as A
+
 try:
     from . import pyutils as py
 except ValueError:
@@ -70,6 +72,35 @@ def call_in_managers(context_managers=None):
     return _decorator
 
 
+def is_parameter_tag(tag):
+    """
+    Check if a tag (str) is a parameter tag. Parameter tags look like e.g.: '[LayerID:conv1][W]' for a layer named
+    'conv1' and parameter named 'W'.
+    """
+    return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
+
+
+def split_parameter_tag(tag, check=False):
+    """
+    Splits a parameter tag to LayerID and parameter name.
+    Example:
+        split_parameter_tag('[LayerID:conv1][W]') -> ('conv1', 'W')
+    """
+    if check:
+        assert is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
+    # First, strip the exterior square brackets
+    layer_id_tag, parameter_name = tag.strip('[]').split('][')
+    # Get layer ID from tag
+    layer_id = layer_id_tag.replace('LayerID:', '')
+    # Done
+    return layer_id, parameter_name
+
+
+def get_parameter_tag(layer_id, parameter_name):
+    """Gets parameter tag given a layer_id and a parameter name."""
+    return "[LayerID:{}][{}]".format(layer_id, parameter_name)
+
+
 # This function is best left folded.
 def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, num_features_in=None,
                     _string_stamper=None, default_dimensions=2, default_num_inputs=1):
@@ -113,7 +144,7 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
                 assert None not in dimensions
             else:
                 # So dimensions isn't a list, so it's either None or an integer.
-                assert isinstance(dimensions, (None, int)), \
+                assert isinstance(dimensions, (type(None), int)), \
                     _string_stamper("The `dimensions` argument must either be a list, integer or None.")
                 # If dimensions is just a number, we know nothing, if we allow the user to assume proper broadcasting.
                 # In this case, use default value
@@ -194,8 +225,7 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
     if num_features_in is not None:
         if py.islistoflists(known_input_shape):
             # Broadcast num_features_in
-            num_features_in = py.broadcast(num_features_in, len(known_input_shape)) \
-                if py.smartlen(num_features_in) != len(known_input_shape) else num_features_in
+            num_features_in = py.broadcast(num_features_in, len(known_input_shape))
 
             # Loop over input indices and set num_features_in in known_input_shape
             # (no need to worry about dimensions - that's why I'm starting to love the b01c format)
@@ -217,7 +247,31 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
                                 "(expecting {} input features).".format(num_features_in, known_input_shape[-1]))
             known_input_shape[-1] = num_features_in
 
-    return known_input_shape
+    return py.delistlistoflists(known_input_shape)
+
+
+def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, variable_scope=None,
+                              context_managers=None, layer_id=None):
+    """
+    Every Antipasti `Layer` should have 'x' (input) and 'y' (output) attributes (tf.placeholder).
+    This function generates them given the input and output shapes.
+    """
+
+    # Container for variables
+    xy_variables = DictList([])
+
+    # Fetch x variable
+    if input_shape is not None:
+        xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
+                                          context_managers=context_managers,
+                                          name=(None if layer_id is None else get_parameter_tag(layer_id, 'x')))
+
+    if output_shape is not None:
+        xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
+                                          context_managers=context_managers,
+                                          name=(None if layer_id is None else get_parameter_tag(layer_id, 'y')))
+
+    return xy_variables
 
 
 def vectorize_function(_string_stamper=None):
@@ -402,12 +456,12 @@ class ParameterCollection(DictList):
                     return py.delist(names_found) if names_found else py.delist(layers_found)
                 else:
                     # item is both a layerID and parameter name
-                    # TODO Add error message
-                    raise KeyError("")
+                    #
+                    raise KeyError("Item(s) {} is(are) both LayerID(s) and parameter name(s). "
+                                   "Resolve conflict by using parameter tags.".format(names_found))
         else:
             # Let the superclass handle this mess
             return super(ParameterCollection, self).__getitem__(item)
-        pass
 
     def find(self, layer_id=None, parameter_name=None):
         # Enforce early stopping if both layer_id and parameter_name is given
@@ -430,6 +484,18 @@ class ParameterCollection(DictList):
         # Done
         return found
 
+    def __setitem__(self, key, value):
+        # Check if key is a parameter tag
+        if not self._is_parameter_tag(key):
+            raise ValueError("Key {} is not a parameter tag.".format(key))
+        super(ParameterCollection, self).__setitem__(key, value)
+
+    def set(self, layer_id, parameter_name, value):
+        self.__setitem__(self._get_parameter_tag(layer_id, parameter_name), value)
+
+    def as_list(self):
+        return self.values()
+
     def _validate_items(self, items=None):
         # Use items in the dict if items is not given
         items = self.items() if items is None else items
@@ -437,20 +503,9 @@ class ParameterCollection(DictList):
             if not self._is_parameter_tag(item_key):
                 raise ValueError("Key {} is not a valid parameter tag.".format(item_key))
 
-    @staticmethod
-    def _is_parameter_tag(tag):
-        return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
-
-    def _split_parameter_tag(self, tag, check=False):
-        if check:
-            assert self._is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
-        # First, strip the exterior square brackets
-        layer_id_tag, parameter_name = tag.strip('[]').split('][')
-        # Get layer ID from tag
-        layer_id = layer_id_tag[9:]
-        # Done
-        return layer_id, parameter_name
-
+    _is_parameter_tag = is_parameter_tag
+    _split_parameter_tag = split_parameter_tag
+    _get_parameter_tag = get_parameter_tag
 
 if __name__ == '__main__':
     pass
