@@ -107,6 +107,35 @@ def initialize_all_uninitialized_variables(run_init_op=True, session=None):
     return init_op
 
 
+def consolidate_context_managers(device=None, variable_scope=None, extra_context_managers=None):
+    """Consolidates context managers."""
+    extra_context_managers = [] if extra_context_managers is None else extra_context_managers
+    more_context_managers = ([tf.device(device)] if device is not None else []) + \
+                            ([tf.variable_scope(variable_scope)] if variable_scope is not None else [])
+    all_context_managers = more_context_managers + extra_context_managers
+    return all_context_managers
+
+
+def call_in_managers(context_managers=None):
+    """
+    Decorator factory that makes a decorator to call the decorated function within nested `context_managers`.
+
+    :type context_managers: list
+    :param context_managers: List of context managers to nest over. The first manager in list is entered first.
+    """
+    def _decorator(function):
+        def decorated_function(*args, **kwargs):
+            with ExitStack as stack:
+                # Enter managers
+                for manager in context_managers:
+                    stack.enter_context(manager)
+                # Evaluate function
+                output = function(*args, **kwargs)
+            return output
+        return decorated_function
+    return _decorator
+
+
 # ------------------- DATATYPE-UTILITIES -------------------
 
 
@@ -185,11 +214,9 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
     :return: a tensorflow variable
     """
 
-    # Prepare context managers
-    context_managers = [] if context_managers is None else context_managers
-    more_context_managers = ([tf.device(device)] if device is not None else []) + \
-                            ([tf.variable_scope(variable_scope)] if variable_scope is not None else [])
-    all_context_managers = more_context_managers + context_managers
+    # Consolidate context managers
+    all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
+                                                        extra_context_managers=context_managers)
 
     # Set up keyword args for the tf.Variable call
     tf_variable_kwds.update({'initial_value': value})
@@ -242,11 +269,9 @@ def get_value(var, session=None):
 def placeholder(dtype=_FLOATX, shape=None, name=None, device=None, variable_scope=None, context_managers=None):
     """Makes a tensorflow placeholder."""
 
-    # Prepare context managers
-    context_managers = [] if context_managers is None else context_managers
-    more_context_managers = ([tf.device(device)] if device is not None else []) + \
-                            ([tf.variable_scope(variable_scope)] if variable_scope is not None else [])
-    all_context_managers = more_context_managers + context_managers
+    # Consolidate context managers
+    all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
+                                                        extra_context_managers=context_managers)
 
     with ExitStack as stack:
         # Enter all context managers
@@ -257,3 +282,42 @@ def placeholder(dtype=_FLOATX, shape=None, name=None, device=None, variable_scop
 
     # Return placeholder
     return ph
+
+
+# ------------------- TENSOR-INFO-AND-MANIPULATION -------------------
+
+
+def ndim(var):
+    """Returns the number of dimensions in a tensor."""
+    var_shape = shape(var)
+    return None if var_shape is None else len(var_shape)
+
+
+def shape(var):
+    """Returns the shape of a tensor as a python builtin object."""
+    _shape = var.get_shape()
+    _shape = None if _shape == tf.TensorShape(None) else _shape.as_list()
+    return _shape
+
+
+def concatenate(tensors, axis=0, name='concat'):
+    if axis < 0:
+        # We need to determine the number of dimensions in the tensor because tensorflow can't (as of the day)
+        _ndims = [ndim(tensor) for tensor in tensors]
+        # Check if the number of dimensionsions can be computed
+        if all([_ndim is None for _ndim in _ndims]):
+            raise ValueError("Number of dimensions could not be computed "
+                             "for concatenation along axis {}.".format(axis))
+
+        # ... and whether it's consistent
+        all_num_dimensions = filter(lambda x: x is not None, _ndims)
+        if not all([_ndim == all_num_dimensions[0] for _ndim in all_num_dimensions]):
+            raise ValueError("Can only concatenate tensors with the same number of dimensions.")
+
+        # Get number of dimensions and compute the axis
+        num_dimension = max(all_num_dimensions)
+        axis = axis % num_dimension
+    # Finally,
+    return tf.concat(axis, tensors, name=name)
+
+
