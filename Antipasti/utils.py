@@ -7,12 +7,7 @@ import random
 import string
 
 from . import backend as A
-
-try:
-    from . import pyutils as py
-except ValueError:
-    # Try to import as a standalone
-    import pyutils as py
+from . import pyutils as py
 
 
 call_in_managers = A.call_in_managers
@@ -247,16 +242,53 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, 
 
     # Fetch x variable
     if input_shape is not None:
-        xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
-                                          context_managers=context_managers,
-                                          name=(None if layer_id is None else get_parameter_tag(layer_id, 'x')))
+        if not py.islistoflists(input_shape):
+            xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
+                                              context_managers=context_managers,
+                                              name=(None if layer_id is None else get_parameter_tag(layer_id, 'x')))
+        else:
+            xy_variables['x'] = [A.placeholder(shape=_input_shape, device=device, variable_scope=variable_scope,
+                                               context_managers=context_managers,
+                                               name=(None if layer_id is None else
+                                                     get_parameter_tag(layer_id, 'x{}'.format(_input_id))))
+                                 for _input_id, _input_shape in enumerate(input_shape)]
+            pass
 
     if output_shape is not None:
-        xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
-                                          context_managers=context_managers,
-                                          name=(None if layer_id is None else get_parameter_tag(layer_id, 'y')))
-
+        if not py.islistoflists(output_shape):
+            xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
+                                              context_managers=context_managers,
+                                              name=(None if layer_id is None else get_parameter_tag(layer_id, 'y')))
+        else:
+            xy_variables['y'] = [A.placeholder(shape=_output_shape, device=device, variable_scope=variable_scope,
+                                               context_managers=context_managers,
+                                               name=(None if layer_id is None else
+                                                     get_parameter_tag(layer_id, 'y{}'.format(_output_id))))
+                                 for _output_id, _output_shape in enumerate(output_shape)]
     return xy_variables
+
+
+def compare_shapes(shape1, shape2):
+    """
+    Function to compare shapes while accounting for unknown components (set to None).
+    This function does not return whether the shapes are equal, but whether they 'could' be equal, i.e.
+    whether they're compatible.
+    """
+
+    # Define function to compare lists (barring None's)
+    def _compare_lists(list1, list2):
+        return len(list1) == len(list2) and \
+               all([elem1 == elem2 if None not in [elem1, elem2] else True for elem1, elem2 in zip(list1, list2)])
+
+    # First test: shape1 and shape2 must both (not) be a list of lists
+    shapes_are_equal = py.islistoflists(shape1) == py.islistoflists(shape2)
+    # Second test: number of inputs must be equal
+    shapes_are_equal = shapes_are_equal and (len(py.list2listoflists(shape1)) == len(py.list2listoflists(shape2)))
+    # Third test: list comparisons
+    shapes_are_equal = shapes_are_equal and all([_compare_lists(list1, list2) for list1, list2 in
+                                                 zip(py.list2listoflists(shape1), py.list2listoflists(shape2))])
+    # Done.
+    return shapes_are_equal
 
 
 def vectorize_function(_string_stamper=None):

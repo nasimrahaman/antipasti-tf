@@ -3,6 +3,7 @@ __author__ = "Nasim Rahaman"
 from .. import pyutils as py
 from .. import utils
 from ..models.tree import LayerTrainyard
+from .. import backend as A
 
 
 class Layer(object):
@@ -40,8 +41,8 @@ class Layer(object):
         # Set variable scope
         self.variable_scope = variable_scope
 
-        # Context managers to use for feeding forward
-        self.context_managers = context_mangers if context_mangers is not None else []
+        # Extra context managers to use for feeding forward
+        self.given_context_managers = context_mangers if context_mangers is not None else []
 
         # "Private" variables for input and output shapes
         self._input_shape = None
@@ -51,11 +52,68 @@ class Layer(object):
         self._parameters = utils.ParameterCollection([])
 
         # Containers for input and output
-        self.x = None
-        self.y = None
+        self._x = None
+        self._y = None
+
+        # Flag to set if a layer has been feedforward
+        self._is_fedforward = False
 
         # A namespace for storing arbitrary stuff (implemented as a dict for its `get` method)
         self._antipasti_collection = {}
+
+    @property
+    def x(self):
+        # FIXME This fails when self._x is a list
+        # This function does the following:
+        # 1. Checks if _x has already been defined; if not, it defines it
+        # 2. Checks if the input_shape has changed since _x was last defined, in which case it redefines it.
+
+        # Check if the input shape has changed since _x was last defined (remember that _x can also be a list).
+        _xs = py.obj2list(self._x)
+        _input_shapes = py.list2listoflists(self.input_shape)
+        # Loop over all inputs to the layer
+        for _x_num in range(self.num_inputs):
+            # Fetch current input
+            _x = _xs[_x_num]
+            # Get input shape if possible
+            _x_shape = A.shape(_x) if _x is not None else None
+            # Compare shape with what's expected
+            _x_shape_ok = utils.compare_shapes(_x_shape, _input_shapes[_x_num]) if _x is not None else False
+            # Set variable if it's not set or if the shapes are not compatible
+            if _xs[_x_num] is None or not _x_shape_ok:
+                _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num], device=self.device,
+                                                              variable_scope=self.variable_scope, layer_id=self.name,
+                                                              context_managers=self.given_context_managers)
+                self._is_fedforward = False
+        # Unwrap xs and set as new _x
+        self._x = py.delist(_xs)
+        # Return
+        return self._x
+
+    @x.setter
+    def x(self, value):
+        # FIXME This fails when self._x is a list
+        # Check if value's shape is consistent with the input shape
+        value_shape = A.shape(value)
+        if value_shape is None or value_shape == self.input_shape:
+            # Shape is consistent, set value
+            self._x = value
+        else:
+            raise ValueError(self._stamp_string("Input (x) shape {} is unexpected "
+                                                "(expected {}).".format(value_shape, self.input_shape)))
+
+    @property
+    def y(self):
+        # Check if y has been defined
+        if self._y is not None and self._is_fedforward:
+            return self._y
+        else:
+            raise RuntimeError(self._stamp_string("The output (y) is not defined yet. Consider calling "
+                                                  "the feedforward method before trying to access this variable."))
+
+    @y.setter
+    def y(self, value):
+        self._y = value
 
     @property
     def name(self):
@@ -64,6 +122,16 @@ class Layer(object):
     @name.setter
     def name(self, value):
         self._name = value
+
+    @property
+    def context_managers(self):
+        # Consolidate context managers
+        return A.consolidate_context_managers(device=self.device, variable_scope=self.variable_scope,
+                                              extra_context_managers=self.given_context_managers)
+
+    @context_managers.setter
+    def context_managers(self, value):
+        self.given_context_managers = value
 
     def _stamp_string(self, string):
         return "[LayerID:{}] {}".format(self.name, string)
@@ -178,6 +246,7 @@ class Layer(object):
         Implements the forward pass for the layer, given its input. If the decorator forward_pass is not used, this
         method should read its input from `Layer.x` (if necessary) and write its output to `Layer.y`.
         """
+        # input is by default None, but thanks to the utils.forward_pass decorator, it will always get an argument.
         return input
 
     def assign_parameters(self, parameters=None):
