@@ -63,7 +63,6 @@ class Layer(object):
 
     @property
     def x(self):
-        # FIXME This fails when self._x is a list
         # This function does the following:
         # 1. Checks if _x has already been defined; if not, it defines it
         # 2. Checks if the input_shape has changed since _x was last defined, in which case it redefines it.
@@ -92,15 +91,20 @@ class Layer(object):
 
     @x.setter
     def x(self, value):
-        # FIXME This fails when self._x is a list
-        # Check if value's shape is consistent with the input shape
-        value_shape = A.shape(value)
-        if value_shape is None or value_shape == self.input_shape:
-            # Shape is consistent, set value
-            self._x = value
-        else:
-            raise ValueError(self._stamp_string("Input (x) shape {} is unexpected "
-                                                "(expected {}).".format(value_shape, self.input_shape)))
+        # Convert everything to list so we could loop over
+        values = py.obj2list(value)
+        _xs = py.obj2list(self._x)
+        _input_shapes = py.list2listoflists(self.input_shape)
+        for _x_num in range(self.num_inputs):
+            value_shape = A.shape(values[_x_num])
+            if value_shape is None or utils.compare_shapes(value_shape, _input_shapes[_x_num]):
+                # Shapes are ok
+                _xs[_x_num] = values[_x_num]
+            else:
+                raise ValueError(self._stamp_string("The {}-th input's shape is unexpected "
+                                                    "(was expecting {}, found {})".
+                                                    format(_x_num, _input_shapes[_x_num], value_shape)))
+        self._x = py.delist(_xs)
 
     @property
     def y(self):
@@ -113,6 +117,9 @@ class Layer(object):
 
     @y.setter
     def y(self, value):
+        if not py.smartlen(value) == self.num_outputs:
+            raise ValueError(self._stamp_string("Expected {} outputs (y), got {}.".
+                                                format(self.num_outputs, py.smartlen(value))))
         self._y = value
 
     @property
@@ -151,8 +158,8 @@ class Layer(object):
         # Run shape inference
         output_shape = self.infer_output_shape(input_shape=value)
         # If no errors found, set to internal variables
-        self._input_shape = value
-        self._output_shape = output_shape
+        self._input_shape = py.delistlistoflists(value)
+        self._output_shape = py.delistlistoflists(output_shape)
 
     @property
     def output_shape(self):
@@ -257,9 +264,9 @@ class Layer(object):
         :param parameters: List of parameters (as numpy array or tf.Variable).
         """
         if parameters is not None:
-            # TODO Parameter assignment with tf.assign. Remember that assignment is an operator in TensorFlow and needs
-            # TODO to be eval'ed with a session to take effect.
-            pass
+            # Parameter assignment will happen with the default Antipasti session
+            for parameter_variable, parameter_value in zip(self.parameters, parameters):
+                A.set_value(var=parameter_variable, value=parameter_value)
 
     def __call__(self, input):
         """This should be remniscent of the Keras functional API."""
