@@ -18,9 +18,9 @@ class Model(object):
         self._parameters = utils.ParameterCollection([])
 
         # Container for input, output and targets
-        self.x = None
-        self.y = None
-        self.yt = None
+        self._x = None
+        self._y = None
+        self._yt = None
 
         # Container for cost and loss (cost = objective = loss + regularization)
         self.C = None
@@ -32,6 +32,30 @@ class Model(object):
 
         # Namespace for storing arbitrary stuff
         self._antipasti_collection = []
+
+    @property
+    def x(self):
+        return self._x
+
+    @x.setter
+    def x(self, value):
+        self._x = value
+
+    @property
+    def y(self):
+        return self._y
+
+    @y.setter
+    def y(self, value):
+        self._y = value
+
+    @property
+    def yt(self):
+        return self._yt
+
+    @yt.setter
+    def yt(self, value):
+        self._yt = value
 
     @property
     def name(self):

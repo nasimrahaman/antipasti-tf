@@ -26,6 +26,24 @@ class LayerTrainyard(Model):
         self.input_shape = input_shape
 
     @property
+    def x(self):
+        # Layer should handle the getting and setting
+        return self.trainyard[0].x
+
+    @x.setter
+    def x(self, value):
+        # Layer should handle the getting and setting
+        self.trainyard[0].x = value
+
+    @property
+    def y(self):
+        return self.trainyard[-1].y
+
+    @y.setter
+    def y(self, value):
+        self.trainyard[-1].y = value
+
+    @property
     def trainyard(self):
         return self._trainyard
 
@@ -113,9 +131,42 @@ class LayerTrainyard(Model):
 
     # Parameter assignment cannot be handled by the superclass
     def assign_parameters(self, parameters=None):
-        if parameters is not None:
-            # TODO (See Layer.assign_parameters for potential pitfalls)
-            pass
+        if parameters is None:
+            return
+
+        # Compute the number of parameters per train in trainyard. The structure of this list is similar to trainyard
+        # itself; if trainyard = [[lt1, lt2], lt3], lenlist = [[3, 0], 4] where 3, 0, and 4 are the number of
+        # parameters in lt1, lt2, and lt3 respectively.
+        num_parameters = self._map_signature(lambda coach: len(coach.parameters))
+
+        # Define cursor over num_parameters
+        cursor_start = cursor_stop = 0
+
+        for train_num, train in enumerate(self.trainyard):
+            # Skip if there are no parameters to assign
+            num_params_in_train = sum(py.obj2list(num_parameters[train_num]))
+            if num_params_in_train == 0:
+                continue
+
+            cursor_stop = cursor_start + num_params_in_train
+
+            if isinstance(train, list):
+                # train is a list of coaches
+                subcursor_start = subcursor_stop = cursor_start
+
+                for coach, num_parameters_in_coach in zip(train, num_parameters):
+                    subcursor_stop = subcursor_start + num_parameters_in_coach
+                    # Fetch and assign coach parameters
+                    parameters_in_coach = parameters[subcursor_start:subcursor_stop]
+                    coach.assign_parameters(parameters=parameters_in_coach)
+                    subcursor_start = subcursor_stop
+
+            else:
+                # train is not a list, i.e. parameters can be applied directly
+                parameters_in_train = parameters[cursor_start:cursor_stop]
+                train.assign_parameters(parameters=parameters_in_train)
+
+            cursor_start = cursor_stop
 
     # Feedforward, but without the decorator
     def feedforward(self, input=None):
@@ -175,6 +226,11 @@ class LayerTrainyard(Model):
         self.y = intermediate_result
         # Done.
         return self.y
+
+    def _map_signature(self, fn):
+        out = [[fn(coach) for coach in train] if isinstance(train, list) else fn(train)
+               for train in self.trainyard]
+        return out
 
     # Depth-wise mechanics
     def __add__(self, other):
