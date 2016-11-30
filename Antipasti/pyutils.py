@@ -162,6 +162,20 @@ def broadcast(obj, numtimes):
         raise ValueError("Cannot broadcast list of shape {} to {}.".format(smartlen(obj), numtimes))
 
 
+def getindex(obj, idx, lol=False):
+    # lol: list of lists, lol
+    if not isinstance(obj, (list, tuple)):
+        assert idx == 0, "Object is not a list; only index = 0 is defined."
+        return obj
+    else:
+        if lol:
+            # Expecting a list of lists
+            return list2listoflists(obj)[idx]
+        else:
+            return obj[idx]
+    pass
+
+
 # Function to migrate attributes from one instance of a class to another. This was written to be used for weight
 # sharing.
 def migrateattributes(source, target, attributes):
