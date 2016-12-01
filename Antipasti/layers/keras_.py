@@ -53,10 +53,12 @@ class KerasLayer(Layer):
                                                         "consistent with what Keras expects (= {}). "
                                                         "Set lock_shapes field to False if this is intentional.".
                                                         format(input_num, given_input_shape, keras_input_shape)))
-        # Infer output shape with Keras
-        output_shape = self.keras_model.get_output_shape_for(input_shape)
-        # Keras works with lists of tuples, we need lists of lists
-        output_shape = py.listoftuples2listoflists(output_shape) if py.islistoflists(output_shape) else output_shape
+        # Infer output shape with Keras. Keras expects shapes as [(...), (...), (...), ...] whereas Antipasti
+        # works with [[...], [...], [...], ...]. Feeding in a list [...] confuses keras (see to_list function in
+        # keras.engine.topology) and makes it think that there are multiple inputs.
+        output_shape = self.keras_model.get_output_shape_for(to_keras_shape(input_shape))
+        # Remember, keras works with lists of tuples, we need lists of lists
+        output_shape = to_antipasti_shape(output_shape)
         return output_shape
 
     @utils.forward_pass
@@ -80,7 +82,7 @@ class AntipastiLayer(keras.engine.topology.Layer):
         return self.antipasti_model.feedforward(input=x)
 
     def get_output_shape_for(self, input_shape):
-        return self.antipasti_model.infer_output_shape(input_shape=input_shape)
+        antipasti_shape = self.antipasti_model.infer_output_shape(input_shape=input_shape)
 
 
 # ---- Helper functions
@@ -119,3 +121,21 @@ def to_keras_model(model):
 
     # Done.
     return keras_model
+
+
+def to_keras_shape(shape):
+    if py.islistoflists(shape):
+        return py.listoflists2listoftuples(shape)
+    elif shape is not None:
+        return tuple(shape)
+    else:
+        raise ValueError("Can't convert `None` to Keras shape.")
+
+
+def to_antipasti_shape(shape):
+    if py.islistoflists(shape):
+        raise py.listoftuples2listoflists(shape)
+    elif shape is not None:
+        return list(shape)
+    else:
+        raise ValueError("Can't convert `None` to Antipasti shape.")

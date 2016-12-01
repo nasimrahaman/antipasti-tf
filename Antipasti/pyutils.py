@@ -97,6 +97,12 @@ def listoftuples2listoflists(l):
     return l
 
 
+def listoflists2listoftuples(l):
+    assert islistoflists(l)
+    l = [tuple(elem) for elem in l]
+    return l
+
+
 # Function to chain lists (concatenate lists in a list of lists)
 def chain(l):
     return list(it.chain.from_iterable(l))
@@ -137,6 +143,8 @@ def delistlistoflists(l):
 
 def islistoflists(l):
     return all([isinstance(elem, (list, tuple))for elem in l])
+
+islistoflistsortuples = islistoflists
 
 
 # Function to update a list (list1) with another list (list2) (similar to dict.update, but with lists)
