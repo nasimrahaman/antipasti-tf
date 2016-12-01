@@ -188,7 +188,8 @@ def unref_tf_dtype(dtype):
 
 
 # Make variable
-def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_managers=None, **tf_variable_kwds):
+def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_managers=None, antipasti_name=None,
+             **tf_variable_kwds):
     """
     Makes a tensorflow Variable.
 
@@ -217,7 +218,8 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
     # Consolidate context managers
     all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
                                                         extra_context_managers=context_managers)
-
+    # FIXME Tensorflow can only handle names matching [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (scopes at root)
+    # FIXME or [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (other scopes).
     # Set up keyword args for the tf.Variable call
     tf_variable_kwds.update({'initial_value': value})
     with ExitStack() as stack:
@@ -231,6 +233,7 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
     var._antipasti_set_value = types.MethodType(set_value, var)
     var._antipasti_get_value = types.MethodType(get_value, var)
     var._antipasti_collection = {}
+    var._antipasti_name = antipasti_name
     return var
 
 
@@ -266,20 +269,23 @@ def get_value(var, session=None):
     return var.eval(session=(session if session is not None else Session.session))
 
 
-def placeholder(dtype=_FLOATX, shape=None, name=None, device=None, variable_scope=None, context_managers=None):
+def placeholder(dtype=_FLOATX, shape=None, device=None, variable_scope=None, context_managers=None,
+                antipasti_name=None, **tf_placeholder_kwargs):
     """Makes a tensorflow placeholder."""
 
     # Consolidate context managers
     all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
                                                         extra_context_managers=context_managers)
-
+    # FIXME Tensorflow can only handle names matching [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (scopes at root)
+    # FIXME or [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (other scopes).
     with ExitStack() as stack:
         # Enter all context managers
         for manager in all_context_managers:
             stack.enter_context(manager)
         # Define variable
-        ph = tf.placeholder(to_tf_dtype(dtype), shape=shape, name=name)
+        ph = tf.placeholder(to_tf_dtype(dtype), shape=shape, **tf_placeholder_kwargs)
 
+    ph._antipasti_name = antipasti_name
     # Return placeholder
     return ph
 
