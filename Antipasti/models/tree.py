@@ -28,20 +28,31 @@ class LayerTrainyard(Model):
     @property
     def x(self):
         # Layer should handle the getting and setting
-        return self.trainyard[0].x
+        return self._map_signature(lambda coach: coach.x)[0]
 
     @x.setter
     def x(self, value):
-        # Layer should handle the getting and setting
-        self.trainyard[0].x = value
+        # The input must be set for all input layers (if there are more than one).
+        # since we're using cursors, input_list should be a flat list.
+        input_list = list(py.flatten(value))
+        # The individual input layers may have one or more inputs. The cursor is to keep track.
+        cursor = 0
+
+        # Loop over input layers (width-wise)
+        for coach in py.obj2list(self.trainyard[0]):
+            # Get number of inputs to the coach
+            num_inputs_to_coach = coach.num_inputs
+            # Fetch from list of inputs
+            coach_input = py.delist(input_list[cursor:cursor + num_inputs_to_coach])
+            # Increment cursor
+            cursor += num_inputs_to_coach
+            # Set input
+            coach.x = coach_input
 
     @property
     def y(self):
-        return self.trainyard[-1].y
-
-    @y.setter
-    def y(self, value):
-        self.trainyard[-1].y = value
+        # This is simpler than it looks. :-)
+        return py.delist(list(py.flatten(self._map_signature(lambda coach: coach.y)[-1])))
 
     @property
     def trainyard(self):
@@ -84,6 +95,10 @@ class LayerTrainyard(Model):
         # Set input and output shapes
         self._input_shape = _input_shape
         self._output_shape = output_shape
+
+    @property
+    def _is_fedforward(self):
+        return all(py.flatten(self._map_signature(lambda coach: coach._is_fedforward)))
 
     def infer_output_shape(self, input_shape=None):
         if input_shape is None:
@@ -222,10 +237,9 @@ class LayerTrainyard(Model):
             # Flatten any recursive outputs to a linear list
             intermediate_result = py.delist(list(py.flatten(intermediate_result)))
 
-        # The final intermediate_result is the final result (no shit sherlock)
-        self.y = intermediate_result
-        # Done.
-        return self.y
+        # The final intermediate_result is the final result (no shit sherlock). But note that we don't set self.y,
+        # because self.y is a property that returns the y's of the coaches in self.trainyard[-1].
+        return intermediate_result
 
     def _map_signature(self, fn):
         out = [[fn(coach) for coach in train] if isinstance(train, list) else fn(train)
@@ -239,8 +253,10 @@ class LayerTrainyard(Model):
                                                   "one with {} inputs.".format(self.num_outputs, other.num_inputs)))
         # Other could be a Layer or a LayerTrainyard
         # The 'getmro' function is used because Layer could not be imported (that would introduce a circular
-        # dependency). As a quick reminder, getmro(self) = ('')
-        if 'Layer' in getmro(other.__class__):
+        # dependency). As a quick reminder:
+        # [cls.name for cls in getmro(self.__class__)] = ['LayerTrainyard', 'Model', 'object']
+        other_class_hierarchy = [cls.__name__ for cls in getmro(other.__class__)]
+        if 'Layer' in other_class_hierarchy:
             return LayerTrainyard(self.trainyard + [other])
         elif isinstance(other, LayerTrainyard):
             return LayerTrainyard(self.trainyard + other.trainyard)
@@ -250,8 +266,10 @@ class LayerTrainyard(Model):
 
     # Width-wise mechanics
     def __mul__(self, other):
+        # Get `other`'s class hierarchy
+        other_class_hierarchy = [cls.__name__ for cls in getmro(other.__class__)]
         # Other could be a Layer or a LayerTrainyard
-        if not ('Layer' in getmro(other.__class__) or isinstance(other, LayerTrainyard)):
+        if not ('Layer' in other_class_hierarchy or isinstance(other, LayerTrainyard)):
             raise TypeError(self._stamp_string("Second summand of invalid type. Expected Layer or LayerTrainyard, "
                                                "got '{}' instead.".format(other.__class__.__name__)))
 
