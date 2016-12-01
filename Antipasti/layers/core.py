@@ -11,6 +11,7 @@ class Layer(object):
     Abstract Layer class. This class implements basic layer mechanics (addition and multiplication) in addition to
     parameter value assignment.
     """
+
     # WARNING: Renaming 'Layer' would break Antipasti.models.tree.LayerTrainyard.__add__ and
     # Antipasti.models.tree.LayerTrainyard.__mul__. Be sure to make the necessary changes there.
     def __init__(self, name=None, device=None, variable_scope=None, context_mangers=None):
@@ -69,6 +70,14 @@ class Layer(object):
 
         # Check if the input shape has changed since _x was last defined (remember that _x can also be a list).
         _xs = py.obj2list(self._x)
+
+        # Make double sure _xs is a list of the right length
+        assert len(_xs) == 1 or len(_xs) == self.num_inputs, \
+            self._stamp_string("Internal inconsistency: was expecting self._x to have 1 or {} "
+                               "elements, got {} inputs instead.".format(self.num_inputs, len(_xs)))
+
+        # A layer with multiple inputs will still have [None] in _xs if not for the following line
+        _xs = _xs * self.num_inputs if len(_xs) != self.num_inputs else _xs
         _input_shapes = py.list2listoflists(self.input_shape)
         # Loop over all inputs to the layer
         for _x_num in range(self.num_inputs):
@@ -80,10 +89,17 @@ class Layer(object):
             _x_shape_ok = utils.compare_shapes(_x_shape, _input_shapes[_x_num]) if _x is not None else False
             # Set variable if it's not set or if the shapes are not compatible
             if _xs[_x_num] is None or not _x_shape_ok:
-                _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num], device=self.device,
-                                                              variable_scope=self.variable_scope, layer_id=self.name,
-                                                              context_managers=self.given_context_managers)['x']
-                self._is_fedforward = False
+                if _xs[_x_num] is None:
+                    _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num],
+                                                                  device=self.device,
+                                                                  variable_scope=self.variable_scope,
+                                                                  layer_id=self.name,
+                                                                  context_managers=self.given_context_managers)['x']
+                    self._is_fedforward = False
+                else:
+
+                    pass
+
         # Unwrap xs and set as new _x
         self._x = py.delist(_xs)
         # Return
@@ -233,6 +249,7 @@ class Layer(object):
         name = name if name is not None else variable.name
         # Write to dict
         self._parameters['[LayerID:{}][{}]'.format(self.name, name)] = variable
+        # TODO Add to GraphKeys.TRAINABLE_VARIABLES
         return variable
 
     def infer_output_shape(self, input_shape=None):
