@@ -172,9 +172,9 @@ class LayerTrainyard(Model):
     def feedforward(self, input=None):
         # Check if input is given
         if input is None:
-            self.x = input
-        else:
             input = self.x
+        else:
+            self.x = input
 
         # If trainyard empty: nothing to do, return input
         if not self.trainyard:
