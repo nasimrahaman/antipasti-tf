@@ -125,7 +125,7 @@ def call_in_managers(context_managers=None):
     """
     def _decorator(function):
         def decorated_function(*args, **kwargs):
-            with ExitStack as stack:
+            with ExitStack() as stack:
                 # Enter managers
                 for manager in context_managers:
                     stack.enter_context(manager)
@@ -192,7 +192,7 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
     """
     Makes a tensorflow Variable.
 
-    :type value: numpy.ndarray
+    :type value: numpy.ndarray or float or int
     :param value: Initial value.
 
     :type dtype: str or Any
@@ -220,7 +220,7 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
 
     # Set up keyword args for the tf.Variable call
     tf_variable_kwds.update({'initial_value': value})
-    with ExitStack as stack:
+    with ExitStack() as stack:
         # Enter managers
         for manager in all_context_managers:
             stack.enter_context(manager)
@@ -273,7 +273,7 @@ def placeholder(dtype=_FLOATX, shape=None, name=None, device=None, variable_scop
     all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
                                                         extra_context_managers=context_managers)
 
-    with ExitStack as stack:
+    with ExitStack() as stack:
         # Enter all context managers
         for manager in all_context_managers:
             stack.enter_context(manager)
