@@ -82,7 +82,7 @@ class Layer(object):
             if _xs[_x_num] is None or not _x_shape_ok:
                 _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num], device=self.device,
                                                               variable_scope=self.variable_scope, layer_id=self.name,
-                                                              context_managers=self.given_context_managers)
+                                                              context_managers=self.given_context_managers)['x']
                 self._is_fedforward = False
         # Unwrap xs and set as new _x
         self._x = py.delist(_xs)
