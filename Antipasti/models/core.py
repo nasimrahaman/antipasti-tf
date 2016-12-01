@@ -196,7 +196,6 @@ class Model(object):
         :type other: Layer or Antipasti.models.tree.LayerTrainyard
         :param other: The other `Layer` or `Model`.
         """
-        # TODO Can be done once LayerTrainyard is defined.
         pass
 
     def __mul__(self, other):
@@ -206,7 +205,6 @@ class Model(object):
         :type other: Layer or Antipasti.models.tree.LayerTrainyard
         :param other: The other `Layer` or `Model`.
         """
-        # TODO Can be done once LayerTrainyard is defined.
         pass
 
 
