@@ -193,8 +193,7 @@ class LayerTrainyard(Model):
 
         # If trainyard empty: nothing to do, return input
         if not self.trainyard:
-            self.y = input
-            return self.y
+            return input
 
         # The input must be set for all input layers (if there are more than one)
         input_list = py.obj2list(input)
