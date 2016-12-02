@@ -1,9 +1,9 @@
 __author__ = "Nasim Rahaman"
 
-from .. import pyutils as py
+from ..legacy import pyutils as py
+from .. import backend as A
 from .. import utils
 from ..models.tree import LayerTrainyard
-from .. import backend as A
 
 
 class Layer(object):
@@ -85,20 +85,30 @@ class Layer(object):
             _x = _xs[_x_num]
             # Get input shape if possible
             _x_shape = A.shape(_x) if _x is not None else None
-            # Compare shape with what's expected
-            _x_shape_ok = utils.compare_shapes(_x_shape, _input_shapes[_x_num]) if _x is not None else False
-            # Set variable if it's not set or if the shapes are not compatible
-            if _xs[_x_num] is None or not _x_shape_ok:
-                if _xs[_x_num] is None:
-                    _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num],
-                                                                  device=self.device,
-                                                                  variable_scope=self.variable_scope,
-                                                                  layer_id=self.name,
-                                                                  context_managers=self.given_context_managers)['x']
-                    self._is_fedforward = False
-                else:
+            # Reinitialize variable if it's not initialized yet or if the shapes are out of whack.
+            # To start, we check if a reinitialization is required
+            # (it's required if the variable is not set yet, and if a soft shape comparison (i.e. ignoring None) fails).
+            reinitialization_required = _xs[_x_num] is None or \
+                                        not utils.compare_shapes(_x_shape, _input_shapes[_x_num], soft=True)
+            # If a reinit is not required, check if some shape setting is in order, i.e. when soft check passes but the
+            # hard check fails
+            shape_setting_required = not reinitialization_required and \
+                                     utils.compare_shapes(_x_shape, _input_shapes[_x_num], soft=True) and \
+                                     not utils.compare_shapes(_x_shape, _input_shapes[_x_num], soft=False)
 
-                    pass
+            if reinitialization_required:
+                _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num],
+                                                              device=self.device,
+                                                              variable_scope=self.variable_scope,
+                                                              layer_id=self.name,
+                                                              context_managers=self.given_context_managers)['x']
+                self._is_fedforward = False
+            elif shape_setting_required:
+                # We're almost good, just need to set the shape
+                _xs[_x_num].set_shape(_input_shapes[_x_num])
+            else:
+                # Nothing to do, we're good
+                pass
 
         # Unwrap xs and set as new _x
         self._x = py.delist(_xs)
@@ -113,7 +123,7 @@ class Layer(object):
         _input_shapes = py.list2listoflists(self.input_shape)
         for _x_num in range(self.num_inputs):
             value_shape = A.shape(values[_x_num])
-            if value_shape is None or utils.compare_shapes(value_shape, _input_shapes[_x_num]):
+            if value_shape is None or utils.compare_shapes(value_shape, _input_shapes[_x_num], soft=True):
                 # Shapes are ok
                 _xs[_x_num] = values[_x_num]
             else:
@@ -126,6 +136,11 @@ class Layer(object):
     def y(self):
         # Check if y has been defined
         if self._y is not None and self._is_fedforward:
+            # Validate shape
+            if not utils.validate_shape(self._y, self.output_shape, set_shape=True):
+                raise RuntimeError(self._stamp_string("Internal inconsistency: was expecting "
+                                                      "self._y to have shape {}, got {} instead.".
+                                                      format(utils.get_shape(self._y), self.output_shape)))
             return self._y
         else:
             raise RuntimeError(self._stamp_string("The output (y) is not defined yet. Consider calling "
@@ -136,6 +151,27 @@ class Layer(object):
         if not py.smartlen(value) == self.num_outputs:
             raise ValueError(self._stamp_string("Expected {} outputs (y), got {}.".
                                                 format(self.num_outputs, py.smartlen(value))))
+
+        # The following checks if value shape is consistent:
+        # Make sure _ys has the right length
+        _ys = py.obj2list(self._y)
+        assert len(_ys) == 1 or len(_ys) == self.num_outputs, \
+            self._stamp_string("Internal Error: Was expecting 1 or {} elements "
+                               "in self._y, found {}.".format(self.num_outputs, len(_ys)))
+        _ys = _ys * self.num_outputs if len(_ys) == 1 else _ys
+
+        # value.shape could be None if it's not set, so we can't use utils.get_shape
+        value_shapes = [A.shape(val) for val in py.obj2list(value)]
+
+        for _y_num in range(self.num_outputs):
+            # Figure out whether to check shapes, i.e. only when value_shape is given and self._y is not None,
+            # which must not always be the case.
+            check_shapes = value_shapes[_y_num] is not None and _ys[_y_num] is not None
+            if check_shapes and not utils.validate_shape(_ys[_y_num], value_shapes[_y_num], set_shape=True):
+                raise ValueError(self._stamp_string("Trying to set input variable {} with "
+                                                    "expected shape {} to a value of shape {}.".
+                                                    format(_y_num, A.shape(_ys[_y_num]), value_shapes[_y_num])))
+
         self._y = value
 
     @property

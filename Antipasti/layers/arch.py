@@ -1,9 +1,9 @@
 __author__ = "Nasim Rahaman"
 
+from ..legacy import pyutils as py
 from .core import Layer
-from .. import utils
 from .. import backend as A
-from .. import pyutils as py
+from .. import utils
 
 
 class ReplicateLayer(Layer):

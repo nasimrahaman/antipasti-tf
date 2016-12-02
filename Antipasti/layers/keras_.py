@@ -1,9 +1,9 @@
 __author__ = "Nasim Rahaman"
 
+from ..legacy import pyutils as py
 from . import Layer
-from .. import pyutils as py
-from .. import utils
 from .. import backend as A
+from .. import utils
 
 try:
     import keras
@@ -33,8 +33,9 @@ class KerasLayer(Layer):
         self.keras_input = input
         self.keras_output = output
         self.lock_shapes = lock_shapes
-        self.keras_model = keras.models.Model(input=self.keras_input, output=self.keras_output)
-        self.input_shape = utils.get_input_shape(known_input_shape=get_keras_shape(self.keras_input))
+        self.keras_model = keras.models.Model(input=self.keras_input, output=self.keras_output, name=self.name)
+        self.input_shape = utils.get_input_shape(
+            known_input_shape=to_antipasti_shape(get_keras_shape(self.keras_input)))
 
     @property
     def parameters(self):
@@ -134,7 +135,7 @@ def to_keras_shape(shape):
 
 def to_antipasti_shape(shape):
     if py.islistoflists(shape):
-        raise py.listoftuples2listoflists(shape)
+        return py.listoftuples2listoflists(shape)
     elif shape is not None:
         return list(shape)
     else:
