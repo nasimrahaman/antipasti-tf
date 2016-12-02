@@ -1,14 +1,11 @@
 __author__ = "Nasim Rahaman"
 
-from collections import OrderedDict
-from contextlib2 import ExitStack
-
 import random
 import string
+from collections import OrderedDict
 
+from .legacy import pyutils as py
 from . import backend as A
-from . import pyutils as py
-
 
 call_in_managers = A.call_in_managers
 
@@ -270,17 +267,17 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, 
     return xy_variables
 
 
-def compare_shapes(shape1, shape2):
+def compare_shapes(shape1, shape2, soft=True):
     """
     Function to compare shapes while accounting for unknown components (set to None).
     This function does not return whether the shapes are equal, but whether they 'could' be equal, i.e.
-    whether they're compatible.
+    whether they're compatible. Setting soft to True (False) would have this function (not) ignore None's.
     """
 
     # Define function to compare lists (barring None's)
     def _compare_lists(list1, list2):
         return len(list1) == len(list2) and \
-               all([elem1 == elem2 if None not in [elem1, elem2] else True for elem1, elem2 in zip(list1, list2)])
+               all([elem1 == elem2 if None not in [elem1, elem2] else soft for elem1, elem2 in zip(list1, list2)])
 
     # First test: shape1 and shape2 must both (not) be a list of lists
     shapes_are_equal = py.islistoflists(shape1) == py.islistoflists(shape2)
@@ -291,6 +288,56 @@ def compare_shapes(shape1, shape2):
                                                  zip(py.list2listoflists(shape1), py.list2listoflists(shape2))])
     # Done.
     return shapes_are_equal
+
+
+def validate_shape(variable, expected_shape, soft=True, set_shape=False):
+    """
+    Validates variable shape. Can also work with multiple variables if `variable` is passed in as a list and
+    `expected_shape` as a list of lists. Setting soft to True would result in soft validation (ignoring None's).
+    If `set_shape` is set to True, the placeholder shape is set with the set_shape method (it has no effect
+    if `variable` is not a placeholder, i.e. does not have a `set_shape` attribute).
+
+    :type variable: list or any
+    :param variable: Variable(s)
+
+    :type expected_shape: list or list of list
+    :param expected_shape: Expected shape(s)
+
+    :type soft: bool
+    :param soft: Whether to ignore None's while comparing shapes.
+
+    :type set_shape: bool
+    :param set_shape: Whether to set the shape of the variable to `expected_shape`
+
+    :return: (A list of) True if shape(s) is (are) valid, False otherwise
+    """
+    _vars = py.obj2list(variable)
+    _var_shapes = [A.shape(_var) for _var in _vars]
+    _expected_shapes = py.list2listoflists(expected_shape)
+    validation_results = []
+
+    if len(_var_shapes) != len(_vars):
+        raise ValueError("Cannot validate shape. Given list of variables has {} "
+                         "elements, but the given list of shapes has {}."
+                         .format(len(_vars), len(_var_shapes)))
+
+    for _var_num in range(len(_vars)):
+        shape_soft_ok = compare_shapes(_var_shapes[_var_num], _expected_shapes[_var_num], soft=True)
+        shape_hard_ok = compare_shapes(_var_shapes[_var_num], _expected_shapes[_var_num], soft=False)
+        # Set shape (if requested) if required shape is not hard ok but just soft ok
+        if hasattr(_vars[_var_num], 'set_shape') and set_shape and not shape_hard_ok and shape_soft_ok:
+            # Set shape here
+            _vars[_var_num].set_shape(_expected_shapes[_var_num])
+        # Add validation result to list
+        validation_results.append(shape_soft_ok if soft else shape_hard_ok)
+
+    # Delist and return
+    return py.delist(validation_results)
+
+
+def get_shape(variable):
+    """Like backend.shape, but also works for lists of variables."""
+    return py.delistlistoflists([A.shape(var) for var in py.obj2list(variable)])
 
 
 def vectorize_function(_string_stamper=None):
