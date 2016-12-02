@@ -23,7 +23,7 @@ _DATATYPES = ['float16', 'float32', 'float64',
 _FLOATX = 'float32'
 
 
-class Session(object):
+class TFSession(object):
     """Produces the session used internally by Antipasti."""
 
     _antipasti_session = None
@@ -74,6 +74,10 @@ class Session(object):
         self.session = value
 
 
+# Define a session
+Session = TFSession()
+
+
 def reinitialize_all_variables(run_init_op=True, session=None):
     """
     Reinitialize all variables and optionally, run the initialization op. Note that already initialized variables
@@ -89,6 +93,8 @@ def reinitialize_all_variables(run_init_op=True, session=None):
         session.run(init_op)
 
     return init_op
+
+initialize_all_variables = reinitialize_all_variables
 
 
 def initialize_all_uninitialized_variables(run_init_op=True, session=None):

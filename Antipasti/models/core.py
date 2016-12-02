@@ -1,4 +1,4 @@
-from .. import pyutils as py
+from ..legacy import pyutils as py
 from .. import utils
 
 

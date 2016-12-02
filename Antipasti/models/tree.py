@@ -1,6 +1,6 @@
 from inspect import getmro
 
-from .. import pyutils as py
+from ..legacy import pyutils as py
 from ..models import Model
 
 
