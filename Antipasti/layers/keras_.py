@@ -84,9 +84,141 @@ class AntipastiLayer(keras.engine.topology.Layer):
 
     def get_output_shape_for(self, input_shape):
         antipasti_shape = self.antipasti_model.infer_output_shape(input_shape=input_shape)
+        return antipasti_shape
+
+
+# ---- Keras layers to-go
+
+def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode='same', input_shape=None, name=None,
+         **keras_kwargs):
+    """Make a convolutional layer with Keras."""
+
+    # Get the number of dimensions from kernel_size
+    dimensions = len(kernel_size)
+    # Parse input shape
+    input_shape = utils.get_input_shape(dimensions=dimensions, known_input_shape=input_shape, num_inputs=1,
+                                        num_features_in=maps_in)
+
+    # Set default stride if required
+    subsample = stride if stride is not None else (1,) * dimensions
+    assert len(subsample) == dimensions, "Stride must be a tuple of the same length as kernel_size; " \
+                                         "expected {}, found {}.".format(dimensions, len(subsample))
+
+    # Set default dilation if required
+    rate = dilation if dilation is not None else (1,) * dimensions
+
+    # A few consistency checks
+    is_strided = subsample != (1, 1) or subsample != (1, 1, 1)
+    is_dilated = dilation != (1, 1) or dilation != (1, 1, 1)
+    is_3D = dimensions == 3
+    # Dilated convolutions support in 2D only
+    assert not (is_3D and is_dilated), "No support for 3D dilated convolutions yet."
+    # It's either strided convolution or 2D dilated convolution, but not both
+    assert not (is_strided and is_dilated), "It's either strided or dilated (atrous) convolution, but not both."
+
+    # Make input to the Keras layer
+    keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+
+    # Make Keras convolutional layer
+    if not is_dilated:
+        # 2D or 3D?
+        if not is_3D:
+            # 2D
+            keras_convlayer = keras.layers.Convolution2D(nb_filter=maps_out,
+                                                         nb_row=kernel_size[0], nb_col=kernel_size[1],
+                                                         border_mode=border_mode, subsample=subsample,
+                                                         **keras_kwargs)
+        else:
+            # 3D
+            keras_convlayer = keras.layers.Convolution3D(nb_filter=maps_out,
+                                                         kernel_dim1=kernel_size[0], kernel_dim2=kernel_size[1],
+                                                         kernel_dim3=kernel_size[2],
+                                                         border_mode=border_mode, subsample=subsample,
+                                                         **keras_kwargs)
+    else:
+        # 2D dilated convolution
+        keras_convlayer = keras.layers.AtrousConvolution2D(nb_filter=maps_out,
+                                                           nb_row=kernel_size[0], nb_col=kernel_size[1],
+                                                           border_mode=border_mode, atrous_rate=rate,
+                                                           **keras_kwargs)
+
+    # Build Keras graph
+    keras_output = keras_convlayer(keras_input)
+    # Build KerasLayer from keras_graph
+    layer = KerasLayer(input=keras_input, output=keras_output, name=name)
+
+    # Attach meta information (to mimic that of the future convolutional layer)
+    layer.maps_in = maps_in
+    layer.maps_out = maps_out
+    layer.kernel_size = kernel_size
+    layer.stride = subsample
+    layer.dilation = rate
+    layer.border_mode = border_mode
+    layer.keras_kwargs = keras_kwargs
+
+    # Done.
+    return layer
+
+
+def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same', input_shape=None, name=None,
+         **keras_kwargs):
+    """Make a pooling layer with Keras."""
+
+    assert pool_mode in {'max', 'mean'}, "Invalid `pool_mode` '{}'; allowed are 'max' and 'mean'.".format(pool_mode)
+
+    # Infer the number of dimensions from the given window
+    dimensions = len(window)
+    assert dimensions in {2, 3}, "Dimension {} is not supported. Supported dimensions are 2 and 3.".format(dimensions)
+
+    # Parse input shape
+    input_shape = utils.get_input_shape(dimensions=dimensions, known_input_shape=input_shape, num_inputs=1)
+
+    # Set default stride if required
+    stride = stride if stride is not None else tuple(window)
+    assert len(stride) == dimensions, "Stride must be a tuple of the same length as kernel_size; " \
+                                      "expected {}, found {}.".format(dimensions, len(stride))
+
+    # Get input to the keras layer
+    keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+
+    # Make Keras pooling layer
+    if not global_:
+        # Vanilla pooling:
+        # Construct pooling class name
+        pool_class_name = "{}Pooling{}D".format({'max': 'Max', 'mean': 'Average'}.get(pool_mode),
+                                                dimensions)
+        keras_poollayer = getattr(keras.layers, pool_class_name)(pool_size=window, strides=stride,
+                                                            border_mode=border_mode, **keras_kwargs)
+        # The shapes are correct, nothing to do
+        keras_postprocessing_layer = keras.layers.Activation(activation='linear')
+    else:
+        # Global pooling
+        # Construct pooling class name
+        pool_class_name = "Global{}Pooling{}D".format({'max': 'Max', 'mean': 'Average'}.get(pool_mode),
+                                                      dimensions)
+        keras_poollayer = getattr(keras.layers, pool_class_name)(**keras_kwargs)
+        # Global pooling in Keras gets rid of the last two spatial dimensions. We don't want this, so we add in an
+        # extra lambda layer to undo this.
+        if dimensions == 3:
+            expand = lambda var: A.expand_dims(A.expand_dims(A.expand_dims(var, dim=1), dim=1), dim=1)
+            expand_shape = lambda _input_shape: (_input_shape[0], 1, 1, 1, _input_shape[1])
+        else:
+            expand = lambda var: A.expand_dims(A.expand_dims(var, dim=1), dim=1)
+            expand_shape = lambda _input_shape: (_input_shape[0], 1, 1, _input_shape[1])
+        keras_postprocessing_layer = keras.layers.Lambda(function=expand, output_shape=expand_shape)
+
+    # Build Keras graph
+    keras_pooled = keras_poollayer(keras_input)
+    keras_output = keras_postprocessing_layer(keras_pooled)
+    # Build KerasLayer from keras graph
+    layer = KerasLayer(input=keras_input, output=keras_output, name=name)
+
+    # Done.
+    return layer
 
 
 # ---- Helper functions
+
 def get_keras_shape(variables):
     """Try to get variable shape(s) from Keras, and fall back to tensorflow if that fails."""
     shapes = []

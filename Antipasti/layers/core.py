@@ -130,6 +130,7 @@ class Layer(object):
                 raise ValueError(self._stamp_string("The {}-th input's shape is unexpected "
                                                     "(was expecting {}, found {})".
                                                     format(_x_num, _input_shapes[_x_num], value_shape)))
+
         self._x = py.delist(_xs)
 
     @property
