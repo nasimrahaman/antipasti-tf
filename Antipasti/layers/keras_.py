@@ -100,12 +100,12 @@ def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode
                                         num_features_in=maps_in)
 
     # Set default stride if required
-    subsample = stride if stride is not None else (1,) * dimensions
+    subsample = tuple(stride) if stride is not None else (1,) * dimensions
     assert len(subsample) == dimensions, "Stride must be a tuple of the same length as kernel_size; " \
                                          "expected {}, found {}.".format(dimensions, len(subsample))
 
     # Set default dilation if required
-    rate = dilation if dilation is not None else (1,) * dimensions
+    rate = tuple(dilation) if dilation is not None else (1,) * dimensions
 
     # A few consistency checks
     is_strided = subsample != (1, 1) or subsample != (1, 1, 1)
@@ -174,7 +174,7 @@ def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same'
     input_shape = utils.get_input_shape(dimensions=dimensions, known_input_shape=input_shape, num_inputs=1)
 
     # Set default stride if required
-    stride = stride if stride is not None else tuple(window)
+    stride = tuple(stride) if stride is not None else tuple(window)
     assert len(stride) == dimensions, "Stride must be a tuple of the same length as kernel_size; " \
                                       "expected {}, found {}.".format(dimensions, len(stride))
 
@@ -188,7 +188,7 @@ def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same'
         pool_class_name = "{}Pooling{}D".format({'max': 'Max', 'mean': 'Average'}.get(pool_mode),
                                                 dimensions)
         keras_poollayer = getattr(keras.layers, pool_class_name)(pool_size=window, strides=stride,
-                                                            border_mode=border_mode, **keras_kwargs)
+                                                                 border_mode=border_mode, **keras_kwargs)
         # The shapes are correct, nothing to do
         keras_postprocessing_layer = keras.layers.Activation(activation='linear')
     else:
@@ -213,8 +213,18 @@ def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same'
     # Build KerasLayer from keras graph
     layer = KerasLayer(input=keras_input, output=keras_output, name=name)
 
+    layer.window = window
+    layer.stride = stride
+    layer.border_mode = border_mode
+    layer.global_ = global_
+
     # Done.
     return layer
+
+
+def upsample(window):
+    """Make an upsampling layer with Keras."""
+    pass
 
 
 # ---- Helper functions
