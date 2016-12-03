@@ -333,3 +333,5 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
+def expand_dims(var, dim, name=None):
+    return tf.expand_dims(expand_dims(var, dim, name=name))

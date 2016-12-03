@@ -572,5 +572,6 @@ class ParameterCollection(DictList):
     _split_parameter_tag = split_parameter_tag
     _get_parameter_tag = get_parameter_tag
 
+
 if __name__ == '__main__':
     pass
