@@ -74,7 +74,8 @@ class LayerTrainyard(Model):
         return [parameter
                 for train in self.trainyard
                 for coach in py.obj2list(train)
-                for parameter in coach.parameters]
+                for parameter in (coach.parameters.as_list() if hasattr(coach.parameters, 'as_list')
+                                  else coach.parameters)]
 
     # Model.input_shape.setter must be overriden to handle e.g. multiple inputs.
     @Model.input_shape.setter
