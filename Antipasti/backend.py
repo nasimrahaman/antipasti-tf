@@ -4,14 +4,20 @@ __doc__ = """
           https://github.com/fchollet/keras/blob/master/keras/backend/tensorflow_backend.py
           """
 
+import re
 import types
-from contextlib2 import ExitStack
+from contextlib2 import ExitStack, contextmanager
+from collections import OrderedDict
+from argparse import Namespace
 
 import numpy as np
 import tensorflow as tf
 
+from legacy import pyutils as py
+
 
 # ------------------- TENSORFLOW-SPECIFIC -------------------
+
 
 # List of all datatypes
 _DATATYPES = ['float16', 'float32', 'float64',
@@ -113,6 +119,9 @@ def initialize_all_uninitialized_variables(run_init_op=True, session=None):
     return init_op
 
 
+# ------------------- CONTEXT-MANAGING -------------------
+
+
 def consolidate_context_managers(device=None, variable_scope=None, extra_context_managers=None):
     """Consolidates context managers."""
     extra_context_managers = [] if extra_context_managers is None else extra_context_managers
@@ -120,6 +129,179 @@ def consolidate_context_managers(device=None, variable_scope=None, extra_context
                             ([tf.variable_scope(variable_scope)] if variable_scope is not None else [])
     all_context_managers = more_context_managers + extra_context_managers
     return all_context_managers
+
+
+class ContextSuperManager(object):
+    """Class to help with managing the usual context managers in tensorflow."""
+    def __init__(self, device=None, variable_scope=None, other_context_managers=None):
+        """
+        :type device: str
+        :param device: Device to use, e.g. 'gpu0' or '/gpu:0'
+
+        :type variable_scope: str or list of str or any
+        :param variable_scope: (List of) variable scopes. If strings are provided, they're wrapped in
+                               tf.variable_scope
+
+        :type other_context_managers: list
+        :param other_context_managers: List of extra context managers to be used.
+        """
+        self.device = self.parse_device_name(device)
+        self.variable_scope = variable_scope if variable_scope is not None else []
+        self.other_context_managers = other_context_managers if other_context_managers is not None else []
+        # Container to store scope yields
+        self._scope_yields = None
+
+    def get_managers(self, parameter_tag=None, layer_id=None, device=None, variable_scope=None,
+                     other_context_managers=None, reuse=None, reuse_variable_scope=None,
+                     reuse_layer_variable_scope=None):
+        """
+        :type parameter_tag: str or NoneType
+        :param parameter_tag: Parameter tag of the layer for which the manager is being retrieved.
+
+        :type layer_id: str or NoneType
+        :param layer_id: ID of the layer for which the manager is being retrieved.
+
+        :type device: str or NoneType
+        :param device: Device to use, e.g. 'gpu0' or '/gpu:0'
+
+        :type variable_scope: str or list of str or NoneType or any
+        :param variable_scope: (List of) variable scopes. If strings are provided, they're wrapped in
+                               tf.variable_scope
+
+        :type other_context_managers: list or NoneType
+        :param other_context_managers: List of extra context managers to be used.
+
+        :type reuse: bool or NoneType
+        :param reuse: Whether to reuse variables in all variable scope. Note that this argument takes precedence over
+                      `reuse_variable_scope` and `reuse_layer_variable_scope`.
+
+        :type reuse_variable_scope: bool or NoneType
+        :param reuse_variable_scope: Whether to reuse variable scopes in the `variable_scope` argument.
+
+        :type reuse_layer_variable_scope: bool or NoneType
+        :param reuse_layer_variable_scope: Whether to reuse the variable scope of the layer
+                                           (as deduced from `parameter_tag` or `layer_id`)
+
+        :return: List of context mangers, ready to be entered in an ExitStack
+        """
+        # Get device
+        device = self.device if device is None else self.parse_device_name(device)
+        device = [tf.device(device)]
+
+        # Figure out which variable scopes are to be set reusable. The 'reuse' argument takes precedence
+        if reuse is not None:
+            reuse_variable_scope = reuse_layer_variable_scope = reuse
+
+        # Get variable scope from parameter tag
+        if parameter_tag is not None:
+            assert isinstance(parameter_tag, str), \
+                "`parameter_tag` must be a string, got {} instead.".format(parameter_tag.__class__.__name__)
+            layer_id_from_tag, _ = split_parameter_tag(parameter_tag, check=True)
+            assert (layer_id is None) or layer_id_from_tag == layer_id, \
+                "Provided layer_id {} is not consistent with " \
+                "that obtained from the parameter tag {} ({}).".format(layer_id, parameter_tag,
+                                                                       layer_id_from_tag)
+            layer_id = layer_id_from_tag
+
+        # Get variable scope from the layer_id known so far (if at all)
+        if layer_id is not None:
+            assert isinstance(layer_id, str), \
+                "`layer_id` must be a string, got {} instead.".format(layer_id.__class__.__name__)
+            # Make variable scope with layer_id
+            layer_variable_scope = [tf.variable_scope('layer-id_{}'.format(layer_id),
+                                                      reuse=reuse_layer_variable_scope)]
+        else:
+            # Alright then, no variable scope for this layer specified
+            layer_variable_scope = []
+
+        # Get extra variable scopes if any provided
+        if variable_scope is None:
+            # Read scope from attribute
+            variable_scope = self.variable_scope if self.variable_scope is not None else []
+
+        # Support for variable_scope passed as a string or a list of strings
+        variable_scope = [tf.variable_scope(scope, reuse=reuse_variable_scope) if isinstance(scope, str) else scope
+                          for scope in py.obj2list(variable_scope)]
+
+        # Get the remaining context managers
+        other_context_managers = py.obj2list(other_context_managers) if other_context_managers is not None else []
+
+        # Build a list of all context managers and return.
+        all_context_managers = OrderedDict([('device_scope', device),
+                                            ('layer_variable_scope', layer_variable_scope),
+                                            ('variable_scope', variable_scope),
+                                            ('other_context_managers', other_context_managers)])
+
+        # Return
+        return all_context_managers
+
+    @property
+    def scope_yields(self):
+        return Namespace(**self._scope_yields)
+
+    @staticmethod
+    def parameter_tag_to_variable_scope(parameter_tag):
+        if parameter_tag is not None:
+            layer_id, parameter_name = split_parameter_tag(parameter_tag, check=True)
+            return layer_id
+        else:
+            return None
+
+    @contextmanager
+    def manage(self, parameter_tag=None, layer_id=None, device=None, variable_scope=None,
+               other_context_managers=None, reuse=None, reuse_layer_variable_scope=None,
+               reuse_variable_scope=None):
+
+        with ExitStack() as stack:
+            # We're gonna store all mangers yields in an ordered dict, which will in turn be (indirectly) yielded by
+            # this manager (indirectly because this manager yields self for full access, and the manager_yields
+            # ordered dict is assigned as the attribute 'scope_yields').
+            _manager_yields = OrderedDict([])
+            for manager_group, managers in self.get_managers(parameter_tag=parameter_tag, layer_id=layer_id,
+                                                             device=device, variable_scope=variable_scope,
+                                                             other_context_managers=other_context_managers,
+                                                             reuse=reuse,
+                                                             reuse_layer_variable_scope=reuse_layer_variable_scope,
+                                                             reuse_variable_scope=reuse_variable_scope).items():
+                _manager_yields[manager_group] = []
+                for manager in managers:
+                    _manager_yield = stack.enter_context(manager)
+                    _manager_yields[manager_group].append(_manager_yield)
+
+            self._scope_yields = _manager_yields
+            # Yield the object back
+            yield self
+
+    def reuse_variables(self, in_layer_variable_scope=True, in_other_variable_scopes=True):
+        """
+        Whether to reuse variables in the variable scopes. For documentation on how variable scopes work, see:
+        https://www.tensorflow.org/versions/master/how_tos/variable_scope/index.html
+
+        :type in_layer_variable_scope: bool
+        :param in_layer_variable_scope: Whether to reuse variables in the variable scopes used by the layer
+                                        (if any defined by providing a parameter_tag or a layer_id).
+
+        :type in_other_variable_scopes: bool
+        :param in_other_variable_scopes: Whether to reuse variables in the user-defined variable scopes
+                                         (if any defined).
+        """
+        if in_layer_variable_scope:
+            for scope_yield in self.scope_yields.layer_variable_scope:
+                scope_yield.reuse_variables()
+
+        if in_other_variable_scopes:
+            for scope_yield in self.scope_yields.variable_scope:
+                scope_yield.reuse_variables()
+
+    @staticmethod
+    def parse_device_name(device):
+        if device is None:
+            return ''
+        elif re.match('[g, c]pu[0-9]*', device):
+            return '/{}:{}'.format(device[0:3], device[3:] if device[3:] else '0')
+        else:
+            # Failed to parse; maybe it's an address in distributed tf or already in the right format
+            return device
 
 
 def call_in_managers(context_managers=None):
@@ -140,6 +322,38 @@ def call_in_managers(context_managers=None):
             return output
         return decorated_function
     return _decorator
+
+
+# ------------------- PARAMETER-TAGS -------------------
+
+
+def is_parameter_tag(tag):
+    """
+    Check if a tag (str) is a parameter tag. Parameter tags look like e.g.: '[LayerID:conv1][W]' for a layer named
+    'conv1' and parameter named 'W'.
+    """
+    return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
+
+
+def split_parameter_tag(tag, check=False):
+    """
+    Splits a parameter tag to LayerID and parameter name.
+    Example:
+        split_parameter_tag('[LayerID:conv1][W]') -> ('conv1', 'W')
+    """
+    if check:
+        assert is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
+    # First, strip the exterior square brackets
+    layer_id_tag, parameter_name = tag.strip('[]').split('][')
+    # Get layer ID from tag
+    layer_id = layer_id_tag.replace('LayerID:', '')
+    # Done
+    return layer_id, parameter_name
+
+
+def get_parameter_tag(layer_id, parameter_name):
+    """Gets parameter tag given a layer_id and a parameter name."""
+    return "[LayerID:{}][{}]".format(layer_id, parameter_name)
 
 
 # ------------------- DATATYPE-UTILITIES -------------------

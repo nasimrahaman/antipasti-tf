@@ -7,7 +7,13 @@ from collections import OrderedDict
 from .legacy import pyutils as py
 from . import backend as A
 
+
+# Define aliases from backend
 call_in_managers = A.call_in_managers
+ContextSuperManager = A.ContextSuperManager
+is_parameter_tag = A.is_parameter_tag
+split_parameter_tag = A.split_parameter_tag
+get_parameter_tag = A.get_parameter_tag
 
 
 def forward_pass(forward_function):
@@ -47,35 +53,6 @@ def shape_inference(shape_inference_function):
         return shape_inference_function(cls, input_shape=input_shape)
 
     return _infer_output_shape
-
-
-def is_parameter_tag(tag):
-    """
-    Check if a tag (str) is a parameter tag. Parameter tags look like e.g.: '[LayerID:conv1][W]' for a layer named
-    'conv1' and parameter named 'W'.
-    """
-    return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
-
-
-def split_parameter_tag(tag, check=False):
-    """
-    Splits a parameter tag to LayerID and parameter name.
-    Example:
-        split_parameter_tag('[LayerID:conv1][W]') -> ('conv1', 'W')
-    """
-    if check:
-        assert is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
-    # First, strip the exterior square brackets
-    layer_id_tag, parameter_name = tag.strip('[]').split('][')
-    # Get layer ID from tag
-    layer_id = layer_id_tag.replace('LayerID:', '')
-    # Done
-    return layer_id, parameter_name
-
-
-def get_parameter_tag(layer_id, parameter_name):
-    """Gets parameter tag given a layer_id and a parameter name."""
-    return "[LayerID:{}][{}]".format(layer_id, parameter_name)
 
 
 # This function is best left folded.
