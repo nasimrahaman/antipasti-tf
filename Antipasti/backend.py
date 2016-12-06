@@ -145,11 +145,16 @@ class ContextSuperManager(object):
         :type other_context_managers: list
         :param other_context_managers: List of extra context managers to be used.
         """
-        self.device = self.parse_device_name(device)
-        self.variable_scope = variable_scope if variable_scope is not None else []
-        self.other_context_managers = other_context_managers if other_context_managers is not None else []
-        # Container to store scope yields
+        # Book keeping
+        self._device = None
         self._scope_yields = None
+        self._variable_scope = None
+        self._other_context_managers = None
+
+        # Attach meta
+        self.device = device
+        self.variable_scope = variable_scope
+        self.other_context_managers = other_context_managers
 
     def get_managers(self, parameter_tag=None, layer_id=None, device=None, variable_scope=None,
                      other_context_managers=None, reuse=None, reuse_variable_scope=None,
@@ -234,6 +239,42 @@ class ContextSuperManager(object):
 
         # Return
         return all_context_managers
+
+    @property
+    def device(self):
+        return self._device
+
+    @device.setter
+    def device(self, value):
+        self._device = self.parse_device_name(value)
+
+    @property
+    def variable_scope(self):
+        return self._variable_scope
+
+    @variable_scope.setter
+    def variable_scope(self, value):
+        # Parse value (convert to list)
+        if value is None:
+            value = []
+        else:
+            value = py.obj2list(value)
+        # Done.
+        self._variable_scope = value
+
+    @property
+    def other_context_managers(self):
+        return self._other_context_managers
+
+    @other_context_managers.setter
+    def other_context_managers(self, value):
+        # Parse value (convert to list)
+        if value is None:
+            value = []
+        else:
+            value = py.obj2list(value)
+        # Done.
+        self._other_context_managers = value
 
     @property
     def scope_yields(self):
@@ -404,20 +445,37 @@ def unref_tf_dtype(dtype):
         return dtype
 
 
+def to_tf_tensor(value, dtype=_FLOATX, name=None):
+    return tf.convert_to_tensor(value, dtype=dtype, name=name)
+
+
 # ------------------- VARIABLES-AND-TENSORS -------------------
 
 
 # Make variable
-def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_managers=None, antipasti_name=None,
+def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_super_manager=None,
+             device=None, variable_scope=None, other_context_managers=None, antipasti_name=None,
              **tf_variable_kwds):
     """
-    Makes a tensorflow Variable.
+    Makes or gets a tensorflow Variable. If value is not provided but name is (and optionally, variable_scope names),
+    this function calls the tf.get_variable method. In this case, the shape must be provided if the variable is being
+    initialized for the first time. Otherwise if a value is provided, this function calls the
+    tf.Variable constructor directly. If both value and name are provided, value takes precedence.
 
     :type value: numpy.ndarray or float or int
     :param value: Initial value.
 
+    :type name: str
+    :param name: Tensorflow name.
+
+    :type shape: list
+    :param shape: Shape of the variable.
+
     :type dtype: str or Any
     :param dtype: Datatype of the initialized tensor
+
+    :type context_super_manager: ContextSuperManager
+    :param context_super_manager: A context supermanager to initialize the variable in.
 
     :type device: str
     :param device: String specifying where to place the variable.
@@ -425,8 +483,11 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
     :type variable_scope: str
     :param variable_scope: Variable scope to define the variable in.
 
-    :type context_managers: list
-    :param context_managers: list of context managers to define the variable in.
+    :type other_context_managers: list
+    :param other_context_managers: list of context managers to define the variable in.
+
+    :type antipasti_name: str
+    :param antipasti_name: Variable name to be used by Antipasti.
 
     :type tf_variable_kwds: dict
     :param tf_variable_kwds: Dictionary of keyword arguments to send to the tensorflow variable constructor.
@@ -435,19 +496,27 @@ def variable(value, dtype=_FLOATX, device=None, variable_scope=None, context_man
     :return: a tensorflow variable
     """
 
-    # Consolidate context managers
-    all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
-                                                        extra_context_managers=context_managers)
-    # FIXME Tensorflow can only handle names matching [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (scopes at root)
-    # FIXME or [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (other scopes).
-    # Set up keyword args for the tf.Variable call
-    tf_variable_kwds.update({'initial_value': value})
-    with ExitStack() as stack:
-        # Enter managers
-        for manager in all_context_managers:
-            stack.enter_context(manager)
-        # Make variable
-        var = tf.Variable(dtype=to_tf_dtype(dtype), **tf_variable_kwds)
+    # Make context supermanager if none provided
+    if context_super_manager is None:
+        context_super_manager = ContextSuperManager(device=device, variable_scope=variable_scope,
+                                                    other_context_managers=other_context_managers)
+
+    # Check whether to get or to make
+    make = value is not None
+    get = name is not None
+
+    with context_super_manager.manage():
+        if make:
+            # Set up keyword args for the tf.Variable call
+            tf_variable_kwds.update({'initial_value': to_tf_tensor(value, dtype=dtype),
+                                     'name': name})
+            # Make variable
+            var = tf.Variable(dtype=to_tf_dtype(dtype), **tf_variable_kwds)
+        elif get:
+            # Get variable from scope
+            var = tf.get_variable(name, shape=shape, dtype=dtype, **tf_variable_kwds)
+        else:
+            raise RuntimeError("Either value or name must be provided.")
 
     # Ah, habits from the good ol' theano days
     var._antipasti_set_value = types.MethodType(set_value, var)
@@ -489,19 +558,16 @@ def get_value(var, session=None):
     return var.eval(session=(session if session is not None else Session.session))
 
 
-def placeholder(dtype=_FLOATX, shape=None, device=None, variable_scope=None, context_managers=None,
-                antipasti_name=None, **tf_placeholder_kwargs):
+def placeholder(dtype=_FLOATX, shape=None, context_super_manager=None, device=None, variable_scope=None,
+                other_context_managers=None, antipasti_name=None, **tf_placeholder_kwargs):
     """Makes a tensorflow placeholder."""
 
-    # Consolidate context managers
-    all_context_managers = consolidate_context_managers(device=device, variable_scope=variable_scope,
-                                                        extra_context_managers=context_managers)
-    # FIXME Tensorflow can only handle names matching [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (scopes at root)
-    # FIXME or [A-Za-z0-9.][A-Za-z0-9_.\\-/]* (other scopes).
-    with ExitStack() as stack:
-        # Enter all context managers
-        for manager in all_context_managers:
-            stack.enter_context(manager)
+    # Build context supermanager
+    if context_super_manager is None:
+        context_super_manager = ContextSuperManager(device=device, variable_scope=variable_scope,
+                                                    other_context_managers=other_context_managers)
+    # Manage contexts and define placeholder
+    with context_super_manager.manage():
         # Define variable
         ph = tf.placeholder(to_tf_dtype(dtype), shape=shape, **tf_placeholder_kwargs)
 
