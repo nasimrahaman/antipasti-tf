@@ -1,5 +1,7 @@
 __author__ = "Nasim Rahaman"
 
+from contextlib2 import contextmanager
+
 from .pyutils2 import DictList, get_parameter_tag
 from .. import backend as A
 from ..legacy import pykit as py
@@ -305,6 +307,81 @@ def validate_shape(variable, expected_shape, soft=True, set_shape=False):
 def get_shape(variable):
     """Like backend.shape, but also works for lists of variables."""
     return py.delistlistoflists([A.shape(var) for var in py.obj2list(variable)])
+
+
+class LayerContextManager(object):
+    """
+    Context manager to be used by Layer. Contains two context supermanagers, one for initializing parameters and
+    the other for feeding forward (i.e. building the graph). This can be useful for e.g. synchronous training, where
+    the parameters are initialized on the CPU with a certain set of context managers (i.e. tf.device('/cpu:0')) but
+    fedforward on the GPU with another set of context managers (i.e. tf.device('/gpu:0')).
+    """
+    def __init__(self, initialize_csm=None, feedforward_csm=None, default_csm_name='initialize'):
+        # Property containers
+        self._default_csm_name = None
+        self._default_csm = None
+
+        self.initialize_csm = initialize_csm
+        self.feedforward_csm = feedforward_csm
+        self.default_csm_name = default_csm_name
+
+    @property
+    def default_csm_name(self):
+        return self._default_csm_name
+
+    @default_csm_name.setter
+    def default_csm_name(self, value):
+        if value in ['initialize', 'init', 'i']:
+            self._default_csm_name = 'initialize'
+            self._default_csm = self.initialize_csm
+        elif value in ['feedforward', 'ffd', 'f']:
+            self._default_csm_name = 'feedforward'
+            self._default_csm = self.feedforward_csm
+        else:
+            raise ValueError("Default csm name {} is not understood. "
+                             "Try 'initialize' or 'feedforward' instead.".format(value))
+
+    @contextmanager
+    def manage(self, mode=None, **kwargs):
+        if mode not in ['initialize', 'feedforward', None]:
+            raise ValueError("Keyword `mode` must either be 'initialize' or 'feedforward'. Given: {}.".format(mode))
+
+        assert not all([_csm is None for _csm in [self.initialize_csm, self.feedforward_csm]]), \
+            "No context supermanager defined. Define either LayerContextManager.initialize_csm " \
+            "or LayerContextManager.feedforward_csm before calling this method."
+
+        # Find the right csm
+        if mode == 'initialize':
+            csm = self.initialize_csm
+        elif mode == 'feedforward':
+            csm = self.feedforward_csm
+        else:
+            if None not in [self.initialize_csm, self.feedforward_csm]:
+                # None of the CSMs is None, so pick the default
+                csm = self._default_csm
+            else:
+                # Exactly one of the two CSMs is None. Pick the one that isn't.
+                csm = self.initialize_csm if self.initialize_csm is not None else self.feedforward_csm
+
+        # CSM should now be defined. Get in context and yield
+        with csm.manage(**kwargs) as scope:
+            yield scope
+
+
+def get_layer_context_manager(**kwargs):
+    initialize_csm_kwargs = {key[len('initialize_'):]: val
+                             for key, val in kwargs.items() if key.startswith('initialize_')}
+    feedforward_csm_kwargs = {key[len('feedforward_'):]: val
+                              for key, val in kwargs.items() if key.startswith('feedforward_')}
+
+    # Build csms
+    initialize_csm = A.ContextSuperManager(**initialize_csm_kwargs) if initialize_csm_kwargs else None
+    feedforward_csm = A.ContextSuperManager(**feedforward_csm_kwargs) if feedforward_csm_kwargs else None
+
+    # Build Layer manager
+    layer_context_manager = LayerContextManager(initialize_csm=initialize_csm, feedforward_csm=feedforward_csm)
+    # Done.
+    return layer_context_manager
 
 
 if __name__ == '__main__':
