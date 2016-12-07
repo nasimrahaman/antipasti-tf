@@ -309,7 +309,7 @@ def get_shape(variable):
     return py.delistlistoflists([A.shape(var) for var in py.obj2list(variable)])
 
 
-class LayerContextManager(object):
+class LayerContextSuperManagers(object):
     """
     Context manager to be used by Layer. Contains two context supermanagers, one for initializing parameters and
     the other for feeding forward (i.e. building the graph). This can be useful for e.g. synchronous training, where
@@ -317,10 +317,22 @@ class LayerContextManager(object):
     fedforward on the GPU with another set of context managers (i.e. tf.device('/gpu:0')).
     """
     def __init__(self, initialize_csm=None, feedforward_csm=None, default_csm_name='initialize'):
+        """
+        :type initialize_csm: Antipasti.backend.ContextSuperManager
+        :param initialize_csm: Context supermanager for variable initialization.
+
+        :type feedforward_csm: Antipasti.backend.ContextSuperManager
+        :param feedforward_csm: Context supermanager for feeding forward
+
+        :type default_csm_name: str
+        :param default_csm_name: Default context supermanager (can be 'initialize' or 'feedforward')
+        """
         # Property containers
         self._default_csm_name = None
         self._default_csm = None
+        self._ACCESSIBLE_ATTRIBUTES = ['device', 'variable_scope', 'other_context_managers']
 
+        # Attrubute Assignment
         self.initialize_csm = initialize_csm
         self.feedforward_csm = feedforward_csm
         self.default_csm_name = default_csm_name
@@ -347,8 +359,8 @@ class LayerContextManager(object):
             raise ValueError("Keyword `mode` must either be 'initialize' or 'feedforward'. Given: {}.".format(mode))
 
         assert not all([_csm is None for _csm in [self.initialize_csm, self.feedforward_csm]]), \
-            "No context supermanager defined. Define either LayerContextManager.initialize_csm " \
-            "or LayerContextManager.feedforward_csm before calling this method."
+            "No context supermanager defined. Define either LayerContextSuperManagers.initialize_csm " \
+            "or LayerContextSuperManagers.feedforward_csm before calling this method."
 
         # Find the right csm
         if mode == 'initialize':
@@ -367,6 +379,76 @@ class LayerContextManager(object):
         with csm.manage(**kwargs) as scope:
             yield scope
 
+    def set(self, what=None, value=None, for_='all'):
+        # Parse value
+        if isinstance(value, (list, tuple)):
+            value_for_initialize_csm, value_for_feedforward_csm = value
+        elif isinstance(value, dict):
+            # We don't let the value string to default to None, because value = None can have a different meaning for
+            # ContextSuperManager
+            value_for_initialize_csm = value.get('initialize', 'x')
+            value_for_feedforward_csm = value.get('feedforward', 'x')
+        else:
+            value_for_initialize_csm = value_for_feedforward_csm = value
+
+        # Validate `what`
+        if what not in self._ACCESSIBLE_ATTRIBUTES:
+            raise ValueError("The keyword `what` of LayerContextSuperManagers.set "
+                             "must be in {}. Got '{}' instead.".format(self._ACCESSIBLE_ATTRIBUTES, what))
+
+        # Set value
+        if for_ == 'all':
+            if self.initialize_csm is not None and value_for_initialize_csm != 'x':
+                setattr(self.initialize_csm, what, value_for_initialize_csm)
+            if self.feedforward_csm is not None and value_for_feedforward_csm != 'x':
+                setattr(self.feedforward_csm, what, value_for_feedforward_csm)
+        elif for_ == 'initialize':
+            if self.initialize_csm is not None and value_for_initialize_csm != 'x':
+                setattr(self.initialize_csm, what, value_for_initialize_csm)
+        elif for_ == 'feedforward':
+            if self.feedforward_csm is not None and value_for_feedforward_csm != 'x':
+                setattr(self.feedforward_csm, what, value_for_feedforward_csm)
+        else:
+            raise ValueError("The `for_` argument can either be 'all', "
+                             "'initialize' or 'feedforward', got {} instead.".format(for_))
+
+    def get(self, what):
+        # Validate what
+        if what not in self._ACCESSIBLE_ATTRIBUTES:
+            raise ValueError("The keyword `what` of LayerContextSuperManagers.get "
+                             "must be in {}. Got '{}' instead.".format(self._ACCESSIBLE_ATTRIBUTES, what))
+        # Build dict and return
+        what_dict = {}
+        if self.feedforward_csm is not None:
+            what_dict.update({'feedforward': getattr(self.feedforward_csm, what)})
+        if self.initialize_csm is not None:
+            what_dict.update({'initialize': getattr(self.initialize_csm, what)})
+        return what_dict
+
+    @property
+    def device(self):
+        return self.get('device')
+
+    @device.setter
+    def device(self, value):
+        self.set(what='device', value=value, for_='all')
+
+    @property
+    def variable_scope(self):
+        return self.get('variable_scope')
+
+    @variable_scope.setter
+    def variable_scope(self, value):
+        self.set(what='variable_scope', value=value, for_='all')
+
+    @property
+    def other_context_managers(self):
+        return self.get('other_context_managers')
+
+    @other_context_managers.setter
+    def other_context_managers(self, value):
+        self.set(what='other_context_managers', value=value, for_='all')
+
 
 def get_layer_context_manager(**kwargs):
     initialize_csm_kwargs = {key[len('initialize_'):]: val
@@ -379,7 +461,7 @@ def get_layer_context_manager(**kwargs):
     feedforward_csm = A.ContextSuperManager(**feedforward_csm_kwargs) if feedforward_csm_kwargs else None
 
     # Build Layer manager
-    layer_context_manager = LayerContextManager(initialize_csm=initialize_csm, feedforward_csm=feedforward_csm)
+    layer_context_manager = LayerContextSuperManagers(initialize_csm=initialize_csm, feedforward_csm=feedforward_csm)
     # Done.
     return layer_context_manager
 
