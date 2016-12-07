@@ -282,12 +282,18 @@ class Layer(object):
         self.assign_parameters(parameters=value)
 
     def register_parameter(self, variable, name=None):
+        # TODO: (1) register flags in _antipasti_collection ...
+        # ... (e.g. trainable, regularizable, regularization coefficient, max_norm, etc.)
         # Get variable name from variable if name is not given
         name = name if name is not None else variable.name
         # Write to dict
         self._parameters['[LayerID:{}][{}]'.format(self.name, name)] = variable
         # TODO Add to GraphKeys.TRAINABLE_VARIABLES
         return variable
+
+    def initialize_and_register_parameter(self, shape, initialization, name=None):
+        # TODO
+        pass
 
     def infer_output_shape(self, input_shape=None):
         """
