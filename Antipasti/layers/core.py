@@ -1,11 +1,10 @@
-import Antipasti.utilities.pyutils2
-
 __author__ = "Nasim Rahaman"
 
 from ..utilities import utils
 from .. import backend as A
 from ..legacy import pykit as py
 from ..models.tree import LayerTrainyard
+from ..utilities import pyutils2 as py2
 
 
 class Layer(object):
@@ -16,7 +15,7 @@ class Layer(object):
 
     # WARNING: Renaming 'Layer' would break Antipasti.models.tree.LayerTrainyard.__add__ and
     # Antipasti.models.tree.LayerTrainyard.__mul__. Be sure to make the necessary changes there.
-    def __init__(self, name=None, context_super_manager=None, device=None, variable_scope=None,
+    def __init__(self, name=None, context_supermanagers=None, device=None, variable_scope=None,
                  other_context_managers=None):
         """
         Constructor for the Layer superclass.
@@ -40,16 +39,16 @@ class Layer(object):
         self.name = name
 
         # Set context supermanager
-        self.context_super_manager = context_super_manager if context_super_manager is not None else \
-            A.ContextSuperManager(device=device, variable_scope=variable_scope,
-                                  other_context_managers=other_context_managers)
+        self.layer_context_supermanagers = context_supermanagers if context_supermanagers is not None else \
+            utils.get_layer_context_supermanagers(device=device, variable_scope=variable_scope,
+                                                  other_context_managers=other_context_managers)
 
         # "Private" variables for input and output shapes
         self._input_shape = None
         self._output_shape = None
 
         # Container for parameters
-        self._parameters = Antipasti.utilities.pyutils2.ParameterCollection([])
+        self._parameters = py2.ParameterCollection([])
 
         # Containers for input and output
         self._x = None
@@ -57,6 +56,7 @@ class Layer(object):
 
         # Flag to set if a layer has been feedforward
         self._is_fedforward = False
+        self._is_initialized = False
 
         # A namespace for storing arbitrary stuff (implemented as a dict for its `get` method)
         self._antipasti_collection = {}
@@ -185,31 +185,31 @@ class Layer(object):
     @property
     def context_managers(self):
         # Consolidate context managers
-        return self.context_super_manager.manage()
+        return self.layer_context_supermanagers.manage()
 
     @property
     def device(self):
-        return self.context_super_manager.device
+        return self.layer_context_supermanagers.device
 
     @device.setter
     def device(self, value):
-        self.context_super_manager.device = value
+        self.layer_context_supermanagers.device = value
 
     @property
     def variable_scope(self):
-        return self.context_super_manager.variable_scope
+        return self.layer_context_supermanagers.variable_scope
 
     @variable_scope.setter
     def variable_scope(self, value):
-        self.context_super_manager.variable_scope = value
+        self.layer_context_supermanagers.variable_scope = value
 
     @property
     def other_context_managers(self):
-        return self.context_super_manager.other_context_managers
+        return self.layer_context_supermanagers.other_context_managers
 
     @other_context_managers.setter
     def other_context_managers(self, value):
-        self.context_super_manager.other_context_managers = value
+        self.layer_context_supermanagers.other_context_managers = value
 
     def _stamp_string(self, string):
         return "[LayerID:{}] {}".format(self.name, string)
@@ -313,9 +313,11 @@ class Layer(object):
         # TODO
         pass
 
+    @utils.shape_inference
     def infer_output_shape(self, input_shape=None):
         """
-        Infer output shape for given `input_shape`.
+        Infer output shape for given `input_shape`. The decorator utils.shape_inference guarantees that the
+        input_shape argument is given.
 
         :type input_shape: list or list of list
         :param input_shape: Shape of the layer input(s), as a list (1 input) or a list of lists (multiple inputs).
@@ -324,6 +326,20 @@ class Layer(object):
         if input_shape is None:
             input_shape = self.input_shape
         return input_shape
+
+    @utils.layer_initialization
+    def initialize_layer(self, input_shape=None):
+        """
+        Define parameters to be used by the layers in this function for given `input_shape`.
+        The decorator utils.layer_initialization guarantees that the input_shape is given, the variables are
+        initialized in the right device and under the right context managers (including variable_scopes), and that the
+        self._is_initialized flag is set to True.
+
+        :type input_shape: list or list of list
+        :param input_shape: Shape of the layer input(s), as a list (1 input) or a list of lists (multiple inputs).
+        """
+        # Define parameters here. Register parameters with the Layer.register_parameter method.
+        pass
 
     @utils.forward_pass
     def feedforward(self, input=None):
