@@ -12,17 +12,22 @@ def forward_pass(forward_function):
     Decorator for the feedforward method of `Layer`. The `feedforward` method must be able to handle input as a
     keyword argument; this decorator ensures that any given `forward_function` is always fed its input - in other
     words, `forward_function` can be allowed to handle its input as an argument (and not necessarily a keyword
-    argument).
+    argument). In addition, the feedforward_function is called under the right set of context managers and the
+    layer is initialized if not done already.
     """
+
     def _feedforward(cls, input=None):
         # Define behaviour for when input is None:
         if input is None:
             input = cls.x
         else:
             cls.x = input
+        # Initialize layer if not initialized already
+        if not cls._is_initialized:
+            cls.initialize_layer()
         # Evaluate output
-        # TODO Integrate context supermanager here
-        output = A.call_in_managers(cls.context_managers)(forward_function)(cls, input=input)
+        with cls.layer_context_supermanagers.manage(mode='feedforward'):
+            output = forward_function(cls, input=input)
         # Set flag to indicate that the layer has been fedforward
         cls._is_fedforward = True
         # Assign output to y
@@ -45,6 +50,24 @@ def shape_inference(shape_inference_function):
         return shape_inference_function(cls, input_shape=input_shape)
 
     return _infer_output_shape
+
+
+def layer_initialization(layer_initialization_function):
+    """
+    Decorator for the `initialize_layer` method of Layer.
+
+    This decorator guarantees that the input_shape is given, the variables are initialized in the right device
+    and under the right context managers (including variable_scopes), and that the self._is_initialized flag is
+    set to True.
+    """
+
+    def _initialize_layer(cls, input_shape=None):
+        if input_shape is None:
+            input_shape = cls.input_shape
+        with cls.layer_context_supermanagers.manage(mode='initialize'):
+            layer_initialization_function(cls, input_shape=input_shape)
+        cls._is_initialized = True
+    return _initialize_layer
 
 
 # This function is best left folded.
@@ -309,7 +332,7 @@ def get_shape(variable):
     return py.delistlistoflists([A.shape(var) for var in py.obj2list(variable)])
 
 
-class LayerContextSuperManagers(object):
+class LayerContextSupermanagers(object):
     """
     Context manager to be used by Layer. Contains two context supermanagers, one for initializing parameters and
     the other for feeding forward (i.e. building the graph). This can be useful for e.g. synchronous training, where
@@ -318,10 +341,10 @@ class LayerContextSuperManagers(object):
     """
     def __init__(self, initialize_csm=None, feedforward_csm=None, default_csm_name='initialize'):
         """
-        :type initialize_csm: Antipasti.backend.ContextSuperManager
+        :type initialize_csm: Antipasti.backend.ContextSupermanager
         :param initialize_csm: Context supermanager for variable initialization.
 
-        :type feedforward_csm: Antipasti.backend.ContextSuperManager
+        :type feedforward_csm: Antipasti.backend.ContextSupermanager
         :param feedforward_csm: Context supermanager for feeding forward
 
         :type default_csm_name: str
@@ -359,8 +382,8 @@ class LayerContextSuperManagers(object):
             raise ValueError("Keyword `mode` must either be 'initialize' or 'feedforward'. Given: {}.".format(mode))
 
         assert not all([_csm is None for _csm in [self.initialize_csm, self.feedforward_csm]]), \
-            "No context supermanager defined. Define either LayerContextSuperManagers.initialize_csm " \
-            "or LayerContextSuperManagers.feedforward_csm before calling this method."
+            "No context supermanager defined. Define either LayerContextSupermanagers.initialize_csm " \
+            "or LayerContextSupermanagers.feedforward_csm before calling this method."
 
         # Find the right csm
         if mode == 'initialize':
@@ -385,7 +408,7 @@ class LayerContextSuperManagers(object):
             value_for_initialize_csm, value_for_feedforward_csm = value
         elif isinstance(value, dict):
             # We don't let the value string to default to None, because value = None can have a different meaning for
-            # ContextSuperManager
+            # ContextSupermanager
             value_for_initialize_csm = value.get('initialize', 'x')
             value_for_feedforward_csm = value.get('feedforward', 'x')
         else:
@@ -393,7 +416,7 @@ class LayerContextSuperManagers(object):
 
         # Validate `what`
         if what not in self._ACCESSIBLE_ATTRIBUTES:
-            raise ValueError("The keyword `what` of LayerContextSuperManagers.set "
+            raise ValueError("The keyword `what` of LayerContextSupermanagers.set "
                              "must be in {}. Got '{}' instead.".format(self._ACCESSIBLE_ATTRIBUTES, what))
 
         # Set value
@@ -415,7 +438,7 @@ class LayerContextSuperManagers(object):
     def get(self, what):
         # Validate what
         if what not in self._ACCESSIBLE_ATTRIBUTES:
-            raise ValueError("The keyword `what` of LayerContextSuperManagers.get "
+            raise ValueError("The keyword `what` of LayerContextSupermanagers.get "
                              "must be in {}. Got '{}' instead.".format(self._ACCESSIBLE_ATTRIBUTES, what))
         # Build dict and return
         what_dict = {}
@@ -450,21 +473,23 @@ class LayerContextSuperManagers(object):
         self.set(what='other_context_managers', value=value, for_='all')
 
 
-def get_layer_context_manager(**kwargs):
-    initialize_csm_kwargs = {key[len('initialize_'):]: val
-                             for key, val in kwargs.items() if key.startswith('initialize_')}
-    feedforward_csm_kwargs = {key[len('feedforward_'):]: val
-                              for key, val in kwargs.items() if key.startswith('feedforward_')}
+def get_layer_context_supermanagers(**kwargs):
+
+    def try_to_get_from(d, key):
+        if isinstance(d, dict) and key in d.keys():
+            return d.get(key)
+        else:
+            return d
+
+    initialize_csm_kwargs = {key: try_to_get_from(val, 'initialize') for key, val in kwargs.items()}
+    feedforward_csm_kwargs = {key: try_to_get_from(val, 'feedforward') for key, val in kwargs.items()}
 
     # Build csms
-    initialize_csm = A.ContextSuperManager(**initialize_csm_kwargs) if initialize_csm_kwargs else None
-    feedforward_csm = A.ContextSuperManager(**feedforward_csm_kwargs) if feedforward_csm_kwargs else None
+    initialize_csm = A.ContextSupermanager(**initialize_csm_kwargs) if initialize_csm_kwargs else None
+    feedforward_csm = A.ContextSupermanager(**feedforward_csm_kwargs) if feedforward_csm_kwargs else None
 
     # Build Layer manager
-    layer_context_manager = LayerContextSuperManagers(initialize_csm=initialize_csm, feedforward_csm=feedforward_csm)
+    layer_context_supermanagers = LayerContextSupermanagers(initialize_csm=initialize_csm,
+                                                            feedforward_csm=feedforward_csm)
     # Done.
-    return layer_context_manager
-
-
-if __name__ == '__main__':
-    pass
+    return layer_context_supermanagers
