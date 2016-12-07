@@ -14,7 +14,8 @@ class Layer(object):
 
     # WARNING: Renaming 'Layer' would break Antipasti.models.tree.LayerTrainyard.__add__ and
     # Antipasti.models.tree.LayerTrainyard.__mul__. Be sure to make the necessary changes there.
-    def __init__(self, name=None, device=None, variable_scope=None, context_mangers=None):
+    def __init__(self, name=None, context_super_manager=None, device=None, variable_scope=None,
+                 other_context_managers=None):
         """
         Constructor for the Layer superclass.
 
@@ -27,8 +28,8 @@ class Layer(object):
         :type variable_scope: str
         :param variable_scope: Name of the tensorflow varaible scope
 
-        :type context_mangers: list
-        :param context_mangers: List of context managers within which this layer is to be built.
+        :type other_context_managers: list
+        :param other_context_managers: List of context managers within which this layer is to be built.
         """
 
         # "Private" variable for name
@@ -36,14 +37,13 @@ class Layer(object):
         # Set name
         self.name = name
 
-        # Set device
-        self.device = device
-
-        # Set variable scope
-        self.variable_scope = variable_scope
+        # Set context supermanager
+        self.context_super_manager = context_super_manager if context_super_manager is not None else \
+            A.ContextSuperManager(device=device, variable_scope=variable_scope,
+                                  other_context_managers=other_context_managers)
 
         # Extra context managers to use for feeding forward
-        self.given_context_managers = context_mangers if context_mangers is not None else []
+        self.given_context_managers = other_context_managers if other_context_managers is not None else []
 
         # "Private" variables for input and output shapes
         self._input_shape = None
@@ -186,12 +186,31 @@ class Layer(object):
     @property
     def context_managers(self):
         # Consolidate context managers
-        return A.consolidate_context_managers(device=self.device, variable_scope=self.variable_scope,
-                                              extra_context_managers=self.given_context_managers)
+        return self.context_super_manager.manage()
 
-    @context_managers.setter
-    def context_managers(self, value):
-        self.given_context_managers = value
+    @property
+    def device(self):
+        return self.context_super_manager.device
+
+    @device.setter
+    def device(self, value):
+        self.context_super_manager.device = value
+
+    @property
+    def variable_scope(self):
+        return self.context_super_manager.variable_scope
+
+    @variable_scope.setter
+    def variable_scope(self, value):
+        self.context_super_manager.variable_scope = value
+
+    @property
+    def other_context_managers(self):
+        return self.context_super_manager.other_context_managers
+
+    @other_context_managers.setter
+    def other_context_managers(self, value):
+        self.context_super_manager.other_context_managers = value
 
     def _stamp_string(self, string):
         return "[LayerID:{}] {}".format(self.name, string)

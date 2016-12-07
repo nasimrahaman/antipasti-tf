@@ -30,6 +30,7 @@ def forward_pass(forward_function):
         else:
             cls.x = input
         # Evaluate output
+        # TODO Integrate context supermanager here
         output = call_in_managers(cls.context_managers)(forward_function)(cls, input=input)
         # Set flag to indicate that the layer has been fedforward
         cls._is_fedforward = True
@@ -218,12 +219,12 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, 
     if input_shape is not None:
         if not py.islistoflists(input_shape):
             xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
-                                              context_managers=context_managers,
+                                              other_context_managers=context_managers,
                                               antipasti_name=(None if layer_id is None else
                                                               get_parameter_tag(layer_id, 'x')))
         else:
             xy_variables['x'] = [A.placeholder(shape=_input_shape, device=device, variable_scope=variable_scope,
-                                               context_managers=context_managers,
+                                               other_context_managers=context_managers,
                                                antipasti_name=(None if layer_id is None else
                                                                get_parameter_tag(layer_id, 'x{}'.format(_input_id))))
                                  for _input_id, _input_shape in enumerate(input_shape)]
@@ -232,12 +233,12 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, 
     if output_shape is not None:
         if not py.islistoflists(output_shape):
             xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
-                                              context_managers=context_managers,
+                                              other_context_managers=context_managers,
                                               antipasti_name=(None if layer_id is None else
                                                               get_parameter_tag(layer_id, 'y')))
         else:
             xy_variables['y'] = [A.placeholder(shape=_output_shape, device=device, variable_scope=variable_scope,
-                                               context_managers=context_managers,
+                                               other_context_managers=context_managers,
                                                antipasti_name=(None if layer_id is None else
                                                                get_parameter_tag(layer_id, 'y{}'.format(_output_id))))
                                  for _output_id, _output_shape in enumerate(output_shape)]
