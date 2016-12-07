@@ -54,6 +54,35 @@ def vectorize_function(_string_stamper=None):
     return _vectorize_function
 
 
+def is_parameter_tag(tag):
+    """
+    Check if a tag (str) is a parameter tag. Parameter tags look like e.g.: '[LayerID:conv1][W]' for a layer named
+    'conv1' and parameter named 'W'.
+    """
+    return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
+
+
+def split_parameter_tag(tag, check=False):
+    """
+    Splits a parameter tag to LayerID and parameter name.
+    Example:
+        split_parameter_tag('[LayerID:conv1][W]') -> ('conv1', 'W')
+    """
+    if check:
+        assert is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
+    # First, strip the exterior square brackets
+    layer_id_tag, parameter_name = tag.strip('[]').split('][')
+    # Get layer ID from tag
+    layer_id = layer_id_tag.replace('LayerID:', '')
+    # Done
+    return layer_id, parameter_name
+
+
+def get_parameter_tag(layer_id, parameter_name):
+    """Gets parameter tag given a layer_id and a parameter name."""
+    return "[LayerID:{}][{}]".format(layer_id, parameter_name)
+
+
 class DictList(OrderedDict):
     """
     This class brings some of the list goodies to OrderedDict (including number indexing), with the caveat that
@@ -239,31 +268,3 @@ class ParameterCollection(DictList):
     _split_parameter_tag = split_parameter_tag
     _get_parameter_tag = get_parameter_tag
 
-
-def is_parameter_tag(tag):
-    """
-    Check if a tag (str) is a parameter tag. Parameter tags look like e.g.: '[LayerID:conv1][W]' for a layer named
-    'conv1' and parameter named 'W'.
-    """
-    return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
-
-
-def split_parameter_tag(tag, check=False):
-    """
-    Splits a parameter tag to LayerID and parameter name.
-    Example:
-        split_parameter_tag('[LayerID:conv1][W]') -> ('conv1', 'W')
-    """
-    if check:
-        assert is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
-    # First, strip the exterior square brackets
-    layer_id_tag, parameter_name = tag.strip('[]').split('][')
-    # Get layer ID from tag
-    layer_id = layer_id_tag.replace('LayerID:', '')
-    # Done
-    return layer_id, parameter_name
-
-
-def get_parameter_tag(layer_id, parameter_name):
-    """Gets parameter tag given a layer_id and a parameter name."""
-    return "[LayerID:{}][{}]".format(layer_id, parameter_name)
