@@ -1,5 +1,6 @@
-from ..legacy import pyutils as py
-from .. import utils
+from ..utilities import pyutils2 as py2
+from ..utilities import utils
+from ..legacy import pykit as py
 
 
 class Model(object):
@@ -15,7 +16,7 @@ class Model(object):
         self._output_shape = None
 
         # Container for parameters
-        self._parameters = utils.ParameterCollection([])
+        self._parameters = py2.ParameterCollection([])
 
         # Container for input, output and targets
         self._x = None

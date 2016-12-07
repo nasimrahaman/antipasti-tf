@@ -6,15 +6,15 @@ __doc__ = """
 
 import re
 import types
-from contextlib2 import ExitStack, contextmanager
-from collections import OrderedDict
 from argparse import Namespace
+from collections import OrderedDict
 
 import numpy as np
 import tensorflow as tf
+from contextlib2 import ExitStack, contextmanager
 
-from legacy import pyutils as py
-
+from .legacy import pykit as py
+from .utilities.pyutils2 import split_parameter_tag
 
 # ------------------- TENSORFLOW-SPECIFIC -------------------
 
@@ -363,38 +363,6 @@ def call_in_managers(context_managers=None):
             return output
         return decorated_function
     return _decorator
-
-
-# ------------------- PARAMETER-TAGS -------------------
-
-
-def is_parameter_tag(tag):
-    """
-    Check if a tag (str) is a parameter tag. Parameter tags look like e.g.: '[LayerID:conv1][W]' for a layer named
-    'conv1' and parameter named 'W'.
-    """
-    return isinstance(tag, str) and tag.startswith("[LayerID:") and tag.endswith("]") and tag.find('][') != -1
-
-
-def split_parameter_tag(tag, check=False):
-    """
-    Splits a parameter tag to LayerID and parameter name.
-    Example:
-        split_parameter_tag('[LayerID:conv1][W]') -> ('conv1', 'W')
-    """
-    if check:
-        assert is_parameter_tag(tag), "The tag to be split '{}' is not a valid parameter tag.".format(tag)
-    # First, strip the exterior square brackets
-    layer_id_tag, parameter_name = tag.strip('[]').split('][')
-    # Get layer ID from tag
-    layer_id = layer_id_tag.replace('LayerID:', '')
-    # Done
-    return layer_id, parameter_name
-
-
-def get_parameter_tag(layer_id, parameter_name):
-    """Gets parameter tag given a layer_id and a parameter name."""
-    return "[LayerID:{}][{}]".format(layer_id, parameter_name)
 
 
 # ------------------- DATATYPE-UTILITIES -------------------

@@ -1,8 +1,10 @@
+import Antipasti.utilities.pyutils2
+
 __author__ = "Nasim Rahaman"
 
-from ..legacy import pyutils as py
+from ..utilities import utils
 from .. import backend as A
-from .. import utils
+from ..legacy import pykit as py
 from ..models.tree import LayerTrainyard
 
 
@@ -42,15 +44,12 @@ class Layer(object):
             A.ContextSuperManager(device=device, variable_scope=variable_scope,
                                   other_context_managers=other_context_managers)
 
-        # Extra context managers to use for feeding forward
-        self.given_context_managers = other_context_managers if other_context_managers is not None else []
-
         # "Private" variables for input and output shapes
         self._input_shape = None
         self._output_shape = None
 
         # Container for parameters
-        self._parameters = utils.ParameterCollection([])
+        self._parameters = Antipasti.utilities.pyutils2.ParameterCollection([])
 
         # Containers for input and output
         self._x = None

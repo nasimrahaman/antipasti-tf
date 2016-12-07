@@ -1,9 +1,9 @@
 __author__ = "Nasim Rahaman"
 
-from ..legacy import pyutils as py
+from ..utilities import utils
 from . import Layer
 from .. import backend as A
-from .. import utils
+from ..legacy import pykit as py
 
 try:
     import keras
