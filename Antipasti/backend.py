@@ -131,7 +131,7 @@ def consolidate_context_managers(device=None, variable_scope=None, extra_context
     return all_context_managers
 
 
-class ContextSuperManager(object):
+class ContextSupermanager(object):
     """Class to help with managing the usual context managers in tensorflow."""
     def __init__(self, device=None, variable_scope=None, other_context_managers=None):
         """
@@ -421,7 +421,7 @@ def to_tf_tensor(value, dtype=_FLOATX, name=None):
 
 
 # Make variable
-def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_super_manager=None,
+def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_supermanager=None,
              device=None, variable_scope=None, other_context_managers=None, antipasti_name=None,
              **tf_variable_kwds):
     """
@@ -442,8 +442,8 @@ def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_super_man
     :type dtype: str or Any
     :param dtype: Datatype of the initialized tensor
 
-    :type context_super_manager: ContextSuperManager
-    :param context_super_manager: A context supermanager to initialize the variable in.
+    :type context_supermanager: ContextSupermanager
+    :param context_supermanager: A context supermanager to initialize the variable in.
 
     :type device: str
     :param device: String specifying where to place the variable.
@@ -465,15 +465,15 @@ def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_super_man
     """
 
     # Make context supermanager if none provided
-    if context_super_manager is None:
-        context_super_manager = ContextSuperManager(device=device, variable_scope=variable_scope,
-                                                    other_context_managers=other_context_managers)
+    if context_supermanager is None:
+        context_supermanager = ContextSupermanager(device=device, variable_scope=variable_scope,
+                                                   other_context_managers=other_context_managers)
 
     # Check whether to get or to make
     make = value is not None
     get = name is not None
 
-    with context_super_manager.manage():
+    with context_supermanager.manage():
         if make:
             # Set up keyword args for the tf.Variable call
             tf_variable_kwds.update({'initial_value': to_tf_tensor(value, dtype=dtype),
@@ -526,16 +526,16 @@ def get_value(var, session=None):
     return var.eval(session=(session if session is not None else Session.session))
 
 
-def placeholder(dtype=_FLOATX, shape=None, context_super_manager=None, device=None, variable_scope=None,
+def placeholder(dtype=_FLOATX, shape=None, context_supermanager=None, device=None, variable_scope=None,
                 other_context_managers=None, antipasti_name=None, **tf_placeholder_kwargs):
     """Makes a tensorflow placeholder."""
 
     # Build context supermanager
-    if context_super_manager is None:
-        context_super_manager = ContextSuperManager(device=device, variable_scope=variable_scope,
-                                                    other_context_managers=other_context_managers)
+    if context_supermanager is None:
+        context_supermanager = ContextSupermanager(device=device, variable_scope=variable_scope,
+                                                   other_context_managers=other_context_managers)
     # Manage contexts and define placeholder
-    with context_super_manager.manage():
+    with context_supermanager.manage():
         # Define variable
         ph = tf.placeholder(to_tf_dtype(dtype), shape=shape, **tf_placeholder_kwargs)
 
