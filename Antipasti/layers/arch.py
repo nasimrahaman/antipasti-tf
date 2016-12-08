@@ -89,3 +89,34 @@ class IdentityLayer(Layer):
     @utils.shape_inference
     def infer_output_shape(self, input_shape=None):
         return input_shape
+
+
+class FunctionLayer(Layer):
+    """Layer that applies a given function to its input."""
+    def __init__(self, function, shape_inference_function=None, num_inputs=None, dimensions=None, input_shape=None,
+                 **layer_kwargs):
+        super(FunctionLayer, self).__init__(**layer_kwargs)
+
+        # Make sure the functions are callable
+        if not callable(function):
+            raise ValueError(self._stamp_string("The argument `function` must be a callable object."))
+
+        if shape_inference_function is not None and not callable(shape_inference_function):
+            raise ValueError(self._stamp_string("The argument `shape_inference_function` must be "
+                                                "None or a callable object."))
+
+        # Assign attributes
+        self.function = function
+        self.shape_inference_function = shape_inference_function \
+            if shape_inference_function is not None else lambda _input_shape: _input_shape
+
+        self.input_shape = utils.get_input_shape(dimensions=dimensions, known_input_shape=input_shape,
+                                                 num_inputs=num_inputs)
+
+    @utils.forward_pass
+    def feedforward(self, input=None):
+        return self.function(input)
+
+    @utils.shape_inference
+    def infer_output_shape(self, input_shape=None):
+        return self.shape_inference_function(input_shape)
