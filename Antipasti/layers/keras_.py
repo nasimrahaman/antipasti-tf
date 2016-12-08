@@ -89,8 +89,8 @@ class AntipastiLayer(keras.engine.topology.Layer):
 
 # ---- Keras layers to-go
 
-def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode='same', input_shape=None, name=None,
-         **keras_kwargs):
+def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode='same', input_shape=None,
+         name=None, device=None, variable_scope=None, other_context_managers=None, **keras_kwargs):
     """Make a convolutional layer with Keras."""
 
     # Get the number of dimensions from kernel_size
@@ -116,8 +116,9 @@ def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode
     # It's either strided convolution or 2D dilated convolution, but not both
     assert not (is_strided and is_dilated), "It's either strided or dilated (atrous) convolution, but not both."
 
-    # Make input to the Keras layer
-    keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+    # Get layer context supermanagers
+    layer_context_supermanagers = utils.get_layer_context_supermanagers(device=device, variable_scope=variable_scope,
+                                                                        other_context_managers=other_context_managers)
 
     # Make Keras convolutional layer
     if not is_dilated:
@@ -142,10 +143,21 @@ def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode
                                                            border_mode=border_mode, atrous_rate=rate,
                                                            **keras_kwargs)
 
-    # Build Keras graph
-    keras_output = keras_convlayer(keras_input)
+    # Build Keras layer under context managers
+    with layer_context_supermanagers.manage(mode='initialize'):
+        keras_convlayer.build(input_shape=input_shape)
+
+    # Feedforward to build the Keras model (this is not the final graph, but just to build the Keras model graph;
+    # so in principle, one could get away with defining the entire layer model under the 'initialize' manager,
+    # because the final tensorflow graph will be built by Antipasti under the 'feedforward' context manager anyway in
+    # KerasLayer.feedforward.)
+    with layer_context_supermanagers.manage(mode='feedforward'):
+        keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+        keras_output = keras_convlayer(keras_input)
+
     # Build KerasLayer from keras_graph
-    layer = KerasLayer(input=keras_input, output=keras_output, name=name)
+    layer = KerasLayer(input=keras_input, output=keras_output, name=name,
+                       layer_context_supermanagers=layer_context_supermanagers)
 
     # Attach meta information (to mimic that of the future convolutional layer)
     layer.maps_in = maps_in
@@ -160,8 +172,8 @@ def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode
     return layer
 
 
-def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same', input_shape=None, name=None,
-         **keras_kwargs):
+def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same', input_shape=None,
+         name=None, device=None, variable_scope=None, other_context_managers=None, **keras_kwargs):
     """Make a pooling layer with Keras."""
 
     assert pool_mode in {'max', 'mean'}, "Invalid `pool_mode` '{}'; allowed are 'max' and 'mean'.".format(pool_mode)
@@ -178,8 +190,9 @@ def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same'
     assert len(stride) == dimensions, "Stride must be a tuple of the same length as kernel_size; " \
                                       "expected {}, found {}.".format(dimensions, len(stride))
 
-    # Get input to the keras layer
-    keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+    # Get layer context supermanagers
+    layer_context_supermanagers = utils.get_layer_context_supermanagers(device=device, variable_scope=variable_scope,
+                                                                        other_context_managers=other_context_managers)
 
     # Make Keras pooling layer
     if not global_:
@@ -207,9 +220,13 @@ def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same'
             expand_shape = lambda _input_shape: (_input_shape[0], 1, 1, _input_shape[1])
         keras_postprocessing_layer = keras.layers.Lambda(function=expand, output_shape=expand_shape)
 
-    # Build Keras graph
-    keras_pooled = keras_poollayer(keras_input)
-    keras_output = keras_postprocessing_layer(keras_pooled)
+    # Build Keras graph under the right context manager:
+    with layer_context_supermanagers.manage(mode='initialize'):
+        # Get input to the keras layer
+        keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+        keras_pooled = keras_poollayer(keras_input)
+        keras_output = keras_postprocessing_layer(keras_pooled)
+
     # Build KerasLayer from keras graph
     layer = KerasLayer(input=keras_input, output=keras_output, name=name)
 
@@ -222,9 +239,42 @@ def pool(window, stride=None, pool_mode='max', global_=False, border_mode='same'
     return layer
 
 
-def upsample(window):
+def upsample(ratio, input_shape=None, name=None, device=None, variable_scope=None, other_context_managers=None,
+             **keras_kwargs):
     """Make an upsampling layer with Keras."""
-    pass
+
+    # Parse and validate dimensions
+    dimensions = len(ratio)
+    assert dimensions in {2, 3}, "Dimension {} is not supported. Supported dimensions are 2 and 3.".format(dimensions)
+
+    # Parse input shape
+    input_shape = utils.get_input_shape(dimensions=dimensions, known_input_shape=input_shape, num_inputs=1)
+
+    # Get layer context supermanagers
+    layer_context_supermanagers = utils.get_layer_context_supermanagers(device=device, variable_scope=variable_scope,
+                                                                        other_context_managers=other_context_managers)
+
+    # Define Keras layers
+    if dimensions == 2:
+        # 2D
+        keras_upsamplelayer = keras.layers.UpSampling2D(size=tuple(ratio), **keras_kwargs)
+    else:
+        # 3D
+        keras_upsamplelayer = keras.layers.UpSampling3D(size=tuple(ratio), **keras_kwargs)
+
+    # Build Keras graph under the right context manager
+    with layer_context_supermanagers.manage(mode='initialize'):
+        keras_input = keras.layers.Input(shape=input_shape[1:], batch_shape=input_shape[0])
+        keras_output = keras_upsamplelayer(keras_input)
+
+    # Build KerasLayer from the built keras graph
+    layer = KerasLayer(input=keras_input, output=keras_output, name=name)
+
+    # Attach meta
+    layer.ratio = ratio
+
+    # Done.
+    return layer
 
 
 # ---- Helper functions
