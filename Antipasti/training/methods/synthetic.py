@@ -1,4 +1,4 @@
-from .core import Trainer
+from Antipasti.training.core import Trainer
 
 
 class AsyncSynthGradTrainer(Trainer):
