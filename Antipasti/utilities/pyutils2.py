@@ -206,8 +206,8 @@ class ParameterCollection(DictList):
                 return super(ParameterCollection, self).__getitem__(item)
             else:
                 # FIXME This is about as inefficient as it gets. I know, a few seconds do not matter
-                # FIXME if you're training a network, but there has to be a better way
-                # FIXME (e.g. caching names and layer_id's).
+                #       if you're training a network, but there has to be a better way
+                #       (e.g. caching names and layer_id's).
                 # Check if it's a parameter name.
                 names_found = self.find(parameter_name=item)
                 # Check if it's a layer id

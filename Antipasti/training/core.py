@@ -1,34 +1,55 @@
 __author__ = "Nasim Rahaman"
 
 
-class Trainer(object):
-    """Abstract class for an Antipasti Trainer."""
-    # TODO
-    pass
-
-
 class TrainingConfiguration(object):
     """Configuration class for an Antipasti Trainer."""
     # TODO
     pass
 
 
+class Trainer(object):
+    """Abstract class for an Antipasti Trainer."""
+    # TODO
+    pass
+
+
+def application(method):
+    """Decorator for the apply functions. Fetches model from the class (if None provided) and applies the method."""
+
+    def _method(cls, model=None):
+
+        if model is None:
+            model = cls.model
+        else:
+            cls.model = model
+
+        if model is None:
+            raise ValueError("Cannot apply {}, no model is provided.".format(cls.__class__.__name__))
+
+        output = method(cls, model=model)
+        return output
+
+    return _method
+
+
 class Optimizer(object):
     """Abstract class for an optimizer."""
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, model=None, **kwargs):
+        self.model = model
 
-    def apply(self, model):
+    @application
+    def apply(self, model=None):
         """Get the training op and write as model attribute."""
         return model
 
 
 class Loss(object):
     """Abstract class for a loss function (not neccesarily an objective)."""
-    def __init__(self, **kwargs):
+    def __init__(self, model=None, **kwargs):
+        self.model = model
+        # Property containers
         self._weights = None
         self._method = None
-        pass
 
     @property
     def weights(self):
@@ -59,6 +80,7 @@ class Loss(object):
         """Get aggregated the scalar."""
         return NotImplemented
 
+    @application
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         return model
@@ -66,9 +88,10 @@ class Loss(object):
 
 class Regularizer(object):
     """Abstract class for regularizer."""
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, model=None, **kwargs):
+        self.model = model
 
+    @application
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         return model
@@ -76,9 +99,10 @@ class Regularizer(object):
 
 class Objective(object):
     """Abstract class for the training objective. In general, objective = loss + regularization."""
-    def __init__(self, **kwargs):
-        pass
+    def __init__(self, model=None, **kwargs):
+        self.model = model
 
+    @application
     def apply(self, model):
         return model
 
