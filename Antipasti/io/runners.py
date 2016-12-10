@@ -1,5 +1,7 @@
 __author__ = "Nasim Rahaman"
 
+import threading
+
 from .. import backend as A
 from ..utilities import utils
 from ..legacy import pykit as py
@@ -20,6 +22,8 @@ class FeederRunner(object):
         self._enq_op = None
         self._data_placeholders = None
         self._coordinator = None
+
+        self.feeder_lock = threading.Lock()
 
         # Assignments
         self.feeder = feeder
@@ -107,6 +111,10 @@ class FeederRunner(object):
         else:
             return self._queue
 
+    @property
+    def thread_list(self):
+        return list(self.coordinator._registered_threads)
+
     def make_queue(self):
         """Finalize and make a queue."""
         self._queue = A.getfw().RandomShuffleQueue(shapes=self.input_shapes,
@@ -126,10 +134,10 @@ class FeederRunner(object):
         dqd = self.queue.dequeue_many(self.batch_size)
         return dqd
 
-    def nq(self, sess=None):
+    def nq(self, session=None):
         """Read data from feeder, apply preprocessor and enqueue. This function is executed by a single thread."""
         # Get default session from backend
-        sess = A.Session.session if sess is None else sess
+        session = A.Session.session if session is None else session
 
         try:
             # Iterate and add to feeder
@@ -138,10 +146,21 @@ class FeederRunner(object):
                 if self.coordinator.should_stop():
                     break
                 # Data loop
-                for data_batch in self.feeder:
+                while True:
                     # Check if we need to break out of the loop
                     if self.coordinator.should_stop():
                         break
+
+                    # Get data batch with lock
+                    self.feeder_lock.acquire()
+                    try:
+                        # (if the preproccessing is not done here, this shouldn't take long)
+                        data_batch = self.feeder.next()
+                    except StopIteration:
+                        break
+                    finally:
+                        # Release lock
+                        self.feeder_lock.release()
 
                     # Validate data_batch
                     assert len(data_batch) == self.num_inputs, \
@@ -154,14 +173,42 @@ class FeederRunner(object):
                     feed_dict = {_placeholder: _data_tensor
                                  for _placeholder, _data_tensor in zip(self._data_placeholders, prepped_data_batch)}
                     # NQ
-                    sess.run(self._enq_op, feed_dict=feed_dict)
+                    session.run(self._enq_op, feed_dict=feed_dict)
 
-                # Restart feeder for the next epoch
-                self.feeder.restart_generator()
+                # Restart feeder for the next epoch (if possible, break otherwise)
+                if hasattr(self.feeder, 'restart_generator'):
+                    self.feeder.restart_generator()
+                else:
+                    break
 
         except Exception as e:
             self.coordinator.request_stop(e)
 
-    def weave(self):
-        # TODO Make threads
-        pass
+    def weave_threads(self, session=None):
+        """Start datafeeder threads."""
+        # Get default session from backend (if none provided)
+        session = A.Session.session if session is None else session
+        # Start threads
+        for thread_num in range(self.num_threads):
+            thread = threading.Thread(target=self.nq, args=(session,))
+            thread.daemon = True
+            thread.start()
+            self.coordinator.register_thread(thread=thread)
+
+    def start_runner(self, session=None):
+        """Start queue runners and the feeder threads."""
+        # Get default session from backend (if none provided)
+        session = A.Session.session if session is None else session
+        # Start tensorflow queue runners
+        A.getfw().start_queue_runners(sess=session, queue_runners=[self.queue])
+        # Start feeder threads
+        self.weave_threads(session=session)
+
+    def stop_runner(self):
+        """Try to stop all running threads."""
+        self.coordinator.request_stop()
+
+    def join_runner(self):
+        """Stop all threads and wait for them to finish."""
+        self.coordinator.join()
+
