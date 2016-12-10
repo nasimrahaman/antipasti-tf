@@ -13,7 +13,7 @@ class FeederRunner(object):
     Loosely inspired by https://indico.io/blog/tensorflow-data-input-part2-extensions/
     """
     def __init__(self, feeder, batch_size=1, preprocessor=None, dtypes=None, num_threads=1, num_epochs_per_thread=1,
-                 queue_capacity=2000, min_num_elements_in_queue=1000, coordinator=None,
+                 queue_capacity=2000, min_num_elements_in_queue=0, coordinator=None,
                  dimensions=None, num_inputs=None, input_shape=None):
         # Property containers and internal variables
         self._dtypes = None
@@ -35,7 +35,7 @@ class FeederRunner(object):
 
         # Get input shapes ('abuse' utils.get_input_shape)
         self.input_shape = utils.get_input_shape(dimensions=dimensions, num_inputs=num_inputs,
-                                                 known_input_shape=py.delistlistoflists(input_shape),
+                                                 known_input_shape=input_shape,
                                                  default_num_inputs=2, default_dimensions=2)
 
         # Set dtypes
@@ -117,7 +117,7 @@ class FeederRunner(object):
 
     def make_queue(self):
         """Finalize and make a queue."""
-        self._queue = A.getfw().RandomShuffleQueue(shapes=self.input_shapes,
+        self._queue = A.getfw().RandomShuffleQueue(shapes=[_input_shape[1:] for _input_shape in self.input_shapes],
                                                    dtypes=self.dtypes,
                                                    capacity=self.queue_capacity,
                                                    min_after_dequeue=self.min_num_elements_in_queue)
@@ -200,7 +200,7 @@ class FeederRunner(object):
         # Get default session from backend (if none provided)
         session = A.Session.session if session is None else session
         # Start tensorflow queue runners
-        A.getfw().start_queue_runners(sess=session, queue_runners=[self.queue])
+        A.getfw().train.start_queue_runners(sess=session)
         # Start feeder threads
         self.weave_threads(session=session)
 
