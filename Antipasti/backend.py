@@ -37,9 +37,9 @@ def getfw():
 
 # List of all datatypes
 _DATATYPES = ['float16', 'float32', 'float64',
-              'int16', 'int32', 'int64', 'uint8', 'unit16',
+              'int16', 'int32', 'int64', 'uint8', 'uint16',
               'float16_ref', 'float32_ref', 'float64_ref',
-              'int16_ref', 'int32_ref', 'int64_ref', 'uint8_ref', 'unit16_ref']
+              'int16_ref', 'int32_ref', 'int64_ref', 'uint8_ref', 'uint16_ref']
 
 # Default float
 _FLOATX = 'float32'
@@ -393,7 +393,8 @@ def is_string_dtype(dtype):
 
     :rtype: bool
     """
-    return dtype in [dt for dt in _DATATYPES if not dt.endswith('_ref')]
+    # Beware that e.g. tf.float32 == 'float32', so we need the extra isinstance check in place.
+    return isinstance(dtype, str) and dtype in [dt for dt in _DATATYPES if not dt.endswith('_ref')]
 
 
 def is_tf_dtype(dtype):
