@@ -16,6 +16,22 @@ from contextlib2 import ExitStack, contextmanager
 from .legacy import pykit as py
 from .utilities.pyutils2 import split_parameter_tag
 
+
+# ------------------- META -------------------
+
+
+def get(attr):
+    """Get attribute from framework."""
+    assert isinstance(attr, str), \
+        "Attribute to get must be a string, got {} instead.".format(attr.__class__.__name__)
+    return getattr(tf, attr)
+
+
+def getfw():
+    """Get framework."""
+    return tf
+
+
 # ------------------- TENSORFLOW-SPECIFIC -------------------
 
 
