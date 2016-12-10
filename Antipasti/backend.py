@@ -626,5 +626,9 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
+def add_n(inputs, name='add_n'):
+    return tf.add_n(inputs=inputs, name=name)
+
+
 def expand_dims(var, dim, name=None):
     return tf.expand_dims(expand_dims(var, dim, name=name))

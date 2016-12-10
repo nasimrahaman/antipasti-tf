@@ -40,7 +40,7 @@ class ConcatenateLayer(Layer):
 
         # Get input shape
         self.input_shape = utils.get_input_shape(dimensions=dimensions, num_inputs=num_inputs,
-                                                 known_input_shape=input_shape)
+                                                 known_input_shape=input_shape, _string_stamper=self._stamp_string)
 
     @utils.forward_pass
     def feedforward(self, input=None):
@@ -74,6 +74,43 @@ class ConcatenateLayer(Layer):
                         else None] + \
                        (input_shape[0][(self.axis + 1):] if self.axis != -1 else [])
         return output_shape
+
+
+class AddLayer(Layer):
+    """Layer that adds its inputs."""
+    def __init__(self, num_inputs=None, dimensions=None, input_shape=None, **layer_kwargs):
+        # Initialize superclass
+        super(AddLayer, self).__init__(**layer_kwargs)
+        # Set input shape
+        self.input_shape = utils.get_input_shape(dimensions=dimensions, num_inputs=num_inputs,
+                                                 known_input_shape=input_shape, _string_stamper=self._stamp_string)
+        # Make sure the number of inputs is larger than 1
+        if not self.num_inputs > 1:
+            raise ValueError(self._stamp_string("AddLayer expects more than one inputs (got 1). "
+                                                "If no `input_shape` is given or if `dimensions` "
+                                                "is a scalar, please provide `num_inputs`."))
+
+    @utils.shape_inference
+    def infer_output_shape(self, input_shape=None):
+        # Validate input_shape
+        assert py.islistoflists(input_shape), \
+            self._stamp_string("AddLayer expects more than 1 inputs, which implies "
+                               "that the `input_shape` should be a list of lists.")
+        assert len(input_shape) == self.num_inputs, \
+            self._stamp_string("AddLayer expects {} inputs, which is not consistent with "
+                               "the provided shape signature implying {} inputs.".
+                               format(len(input_shape), self.num_inputs))
+        assert all([utils.compare_shapes(_input_shape, input_shape[0], soft=True) for _input_shape in input_shape]), \
+            self._stamp_string("All inputs to the AddLayer must have the same shape "
+                               "(except for None's). The following `input_shape` is "
+                               "therefore not compatible: {}.".format(input_shape))
+        # Get output shape and return
+        output_shape = input_shape[0]
+        return output_shape
+
+    @utils.forward_pass
+    def feedforward(self, input=None):
+        return A.add_n(inputs=input)
 
 
 class IdentityLayer(Layer):
