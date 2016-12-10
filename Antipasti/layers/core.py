@@ -299,14 +299,44 @@ class Layer(object):
     def parameters(self, value):
         self.assign_parameters(parameters=value)
 
-    def register_parameter(self, variable, name=None):
-        # TODO: (1) register flags in _antipasti_collection ...
-        # ... (e.g. trainable, regularizable, regularization coefficient, max_norm, etc.)
+    def register_parameter(self, variable, as_weight=False, as_bias=False, name=None, **collection_key_value_pairs):
+        """
+        Register parameter by adding to self._parameters and to appropriate (tensorflow) collections.
+        Should (in general) be invoked from the initialize_layer method.
+
+        :type variable: any
+        :param variable: Variable to initialize.
+
+        :type as_weight: bool
+        :param as_weight: Whether to register parameter as weight.
+
+        :type as_bias: bool
+        :param as_bias: Whether to register parameter as bias.
+
+        :type name: str
+        :param name: Antipasti name.
+
+        :type collection_key_value_pairs: dict
+        :param collection_key_value_pairs: Key-value pairs to add to antipasti collection.
+
+        :return: `variable` with the attached antipasti collection.
+        """
         # Get variable name from variable if name is not given
         name = name if name is not None else variable.name
+        # Attach collection key-value pairs
+        utils.add_to_antipasti_collection(variable, antipasti_name=name, **collection_key_value_pairs)
         # Write to dict
         self._parameters['[LayerID:{}][{}]'.format(self.name, name)] = variable
-        # TODO Add to GraphKeys.TRAINABLE_VARIABLES
+        # Add to GraphKeys.TRAINABLE_VARIABLES if trainable
+        if utils.is_antipasti_trainable(variable):
+            A.add_to_collection(A.Collections.TRAINABLE_VARIABLES, variable)
+        # Add to GraphKeys.WEIGHTS if parameter is being registered as weight
+        if as_weight:
+            A.add_to_collection(A.Collections.WEIGHTS, variable)
+        # Add to GraphKeys.BIASES if parameter is being registered as a bias
+        if as_bias:
+            A.add_to_collection(A.Collections.BIASES, variable)
+        # Done.
         return variable
 
     def initialize_and_register_parameter(self, shape, initialization, name=None):

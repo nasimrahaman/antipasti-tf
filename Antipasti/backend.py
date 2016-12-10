@@ -8,6 +8,7 @@ import re
 import types
 from argparse import Namespace
 from collections import OrderedDict
+from functools import partial
 
 import numpy as np
 import tensorflow as tf
@@ -133,6 +134,33 @@ def initialize_all_uninitialized_variables(run_init_op=True, session=None):
         session.run(init_op)
     # Return init_op for the record
     return init_op
+
+
+# ------------------- COLLECTION-UTILITIES -------------------
+
+
+def add_to_collection(name, value):
+    tf.add_to_collection(name, value)
+
+
+def get_from_collection(name, idx=None):
+    collection = tf.get_collection(name)
+    if idx is None:
+        return collection
+    else:
+        assert isinstance(idx, int), \
+            "Index `idx` must be a string, got {} instead.".format(idx.__class__.__name__)
+        return collection[idx]
+
+
+get_collection = partial(get_from_collection, idx=None)
+
+
+# Collection keys
+class Collections(object):
+    TRAINABLE_VARIABLES = tf.GraphKeys.TRAINABLE_VARIABLES
+    WEIGHTS = tf.GraphKeys.WEIGHTS
+    BIASES = tf.GraphKeys.BIASES
 
 
 # ------------------- CONTEXT-MANAGING -------------------

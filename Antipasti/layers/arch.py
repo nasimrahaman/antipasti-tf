@@ -93,8 +93,8 @@ class IdentityLayer(Layer):
 
 class FunctionLayer(Layer):
     """Layer that applies a given function to its input."""
-    def __init__(self, function, shape_inference_function=None, num_inputs=None, dimensions=None, input_shape=None,
-                 **layer_kwargs):
+    def __init__(self, function, shape_inference_function=None, parameters=None,
+                 num_inputs=None, dimensions=None, input_shape=None, **layer_kwargs):
         super(FunctionLayer, self).__init__(**layer_kwargs)
 
         # Make sure the functions are callable
@@ -112,6 +112,10 @@ class FunctionLayer(Layer):
 
         self.input_shape = utils.get_input_shape(dimensions=dimensions, known_input_shape=input_shape,
                                                  num_inputs=num_inputs)
+        # Register parameters (assumed present in the function closure, i.e. not fed in to the function at
+        # feedforward-time)
+        for parameter in parameters:
+            self.register_parameter(parameter)
 
     @utils.forward_pass
     def feedforward(self, input=None):

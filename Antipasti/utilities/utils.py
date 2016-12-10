@@ -7,6 +7,9 @@ from .. import backend as A
 from ..legacy import pykit as py
 
 
+# -------- CORE DECORATORS --------
+
+
 def forward_pass(forward_function):
     """
     Decorator for the feedforward method of `Layer`. The `feedforward` method must be able to handle input as a
@@ -68,6 +71,9 @@ def layer_initialization(layer_initialization_function):
             layer_initialization_function(cls, input_shape=input_shape)
         cls._is_initialized = True
     return _initialize_layer
+
+
+# -------- SHAPE GYMNASTICS --------
 
 
 # This function is best left folded.
@@ -219,46 +225,6 @@ def get_input_shape(dimensions=None, num_inputs=None, known_input_shape=None, nu
     return py.delistlistoflists(known_input_shape)
 
 
-def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, variable_scope=None,
-                              context_managers=None, layer_id=None):
-    """
-    Every Antipasti `Layer` should have 'x' (input) and 'y' (output) attributes (tf.placeholder).
-    This function generates them given the input and output shapes.
-    """
-
-    # Container for variables
-    xy_variables = DictList([])
-
-    # Fetch x variable
-    if input_shape is not None:
-        if not py.islistoflists(input_shape):
-            xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
-                                              other_context_managers=context_managers,
-                                              antipasti_name=(None if layer_id is None else
-                                                              get_parameter_tag(layer_id, 'x')))
-        else:
-            xy_variables['x'] = [A.placeholder(shape=_input_shape, device=device, variable_scope=variable_scope,
-                                               other_context_managers=context_managers,
-                                               antipasti_name=(None if layer_id is None else
-                                                               get_parameter_tag(layer_id, 'x{}'.format(_input_id))))
-                                 for _input_id, _input_shape in enumerate(input_shape)]
-            pass
-
-    if output_shape is not None:
-        if not py.islistoflists(output_shape):
-            xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
-                                              other_context_managers=context_managers,
-                                              antipasti_name=(None if layer_id is None else
-                                                              get_parameter_tag(layer_id, 'y')))
-        else:
-            xy_variables['y'] = [A.placeholder(shape=_output_shape, device=device, variable_scope=variable_scope,
-                                               other_context_managers=context_managers,
-                                               antipasti_name=(None if layer_id is None else
-                                                               get_parameter_tag(layer_id, 'y{}'.format(_output_id))))
-                                 for _output_id, _output_shape in enumerate(output_shape)]
-    return xy_variables
-
-
 def compare_shapes(shape1, shape2, soft=True):
     """
     Function to compare shapes while accounting for unknown components (set to None).
@@ -330,6 +296,118 @@ def validate_shape(variable, expected_shape, soft=True, set_shape=False):
 def get_shape(variable):
     """Like backend.shape, but also works for lists of variables."""
     return py.delistlistoflists([A.shape(var) for var in py.obj2list(variable)])
+
+
+# -------- COLLECTION MANAGEMENT UTILITIES --------
+
+
+def add_to_antipasti_collection(objects, **key_value_dict):
+    """Populate objects' internal antipasti collection with (key, value) pairs from `key_value_dict`."""
+    for object_ in py.obj2list(objects, ndarray2list=False):
+        # Check if object has a collection dict already; if it doesn't, give it one
+        if not hasattr(object_, '_antipasti_collection'):
+            setattr(object_, '_antipasti_collection', {})
+        # Update collection with key_value_dict (getattr to make the pycharm linter shut the fuck up)
+        getattr(object_, '_antipasti_collection').update(key_value_dict)
+
+
+def get_from_antipasti_collection(object_, key, default=None):
+    """
+    Get value for a given key in `object_`'s internal antipasti collection,
+    and return `default` if key is not found.
+    """
+    if not hasattr(object_, '_antipasti_collection'):
+        return default
+    else:
+        getattr(object_, '_antipasti_collection').get(key, default=default)
+
+
+def is_antipasti_trainable(parameter):
+    """Function to check if (Antipasti thinks) a parameter is trainable."""
+    return get_from_antipasti_collection(parameter, 'trainable', default=True)
+
+
+def make_antipasti_trainable(parameters):
+    """Make a parameter trainable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, trainable=True)
+
+
+def make_antipasti_untrainable(parameters):
+    """Make a parameter untrainable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, trainable=False)
+
+
+def is_antipasti_regularizable(parameter):
+    """Function to check if (Antipasti thinks) a parameter is regularizable."""
+    return get_from_antipasti_collection(parameter, 'regularizable', default=True)
+
+
+def make_antipasti_regularizable(parameters):
+    """Make a parameter regularizable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, regularizable=True)
+
+
+def make_antipasti_unregularizable(parameters):
+    """Make a parameter regularizable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, regularizable=False)
+
+
+# -------- VARIABLE MANAGEMENT UTILITIES --------
+
+
+def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, variable_scope=None,
+                              context_managers=None, layer_id=None):
+    """
+    Every Antipasti `Layer` should have 'x' (input) and 'y' (output) attributes (tf.placeholder).
+    This function generates them given the input and output shapes.
+    """
+
+    # Container for variables
+    xy_variables = DictList([])
+
+    # Fetch x variable
+    if input_shape is not None:
+        if not py.islistoflists(input_shape):
+            xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
+                                              other_context_managers=context_managers,
+                                              antipasti_name=(None if layer_id is None else
+                                                              get_parameter_tag(layer_id, 'x')))
+        else:
+            xy_variables['x'] = [A.placeholder(shape=_input_shape, device=device, variable_scope=variable_scope,
+                                               other_context_managers=context_managers,
+                                               antipasti_name=(None if layer_id is None else
+                                                               get_parameter_tag(layer_id, 'x{}'.format(_input_id))))
+                                 for _input_id, _input_shape in enumerate(input_shape)]
+            pass
+
+    if output_shape is not None:
+        if not py.islistoflists(output_shape):
+            xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
+                                              other_context_managers=context_managers,
+                                              antipasti_name=(None if layer_id is None else
+                                                              get_parameter_tag(layer_id, 'y')))
+        else:
+            xy_variables['y'] = [A.placeholder(shape=_output_shape, device=device, variable_scope=variable_scope,
+                                               other_context_managers=context_managers,
+                                               antipasti_name=(None if layer_id is None else
+                                                               get_parameter_tag(layer_id, 'y{}'.format(_output_id))))
+                                 for _output_id, _output_shape in enumerate(output_shape)]
+    return xy_variables
+
+
+# -------- CONTEXT MANAGEMENT UTILITIES --------
 
 
 class LayerContextSupermanagers(object):
