@@ -592,17 +592,20 @@ def placeholder(dtype=_FLOATX, shape=None, context_supermanager=None, device=Non
 # ------------------- TENSOR-INFO-AND-MANIPULATION -------------------
 
 
-def ndim(var):
+def ndim(tensor):
     """Returns the number of dimensions in a tensor."""
-    var_shape = shape(var)
+    var_shape = shape(tensor)
     return None if var_shape is None else len(var_shape)
 
 
-def shape(var):
-    """Returns the shape of a tensor as a python builtin object."""
-    _shape = var.get_shape()
-    _shape = None if _shape == tf.TensorShape(None) else _shape.as_list()
-    return _shape
+def shape(tensor, symbolic=False):
+    """Returns the shape of a tensor, by default as a non-symbolic object."""
+    if not symbolic:
+        _shape = tensor.get_shape()
+        _shape = None if _shape == tf.TensorShape(None) else _shape.as_list()
+        return _shape
+    else:
+        return tf.shape(tensor)
 
 
 def concatenate(tensors, axis=0, name='concat'):
@@ -626,9 +629,17 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
-def add_n(inputs, name='add_n'):
-    return tf.add_n(inputs=inputs, name=name)
+def add_n(tensors, name='add_n'):
+    return tf.add_n(inputs=tensors, name=name)
 
 
-def expand_dims(var, dim, name=None):
-    return tf.expand_dims(expand_dims(var, dim, name=name))
+def expand_dims(tensor, dim, name='expand_dims'):
+    return tf.expand_dims(tensor, dim, name=name)
+
+
+def transpose(tensor, perm=None, name='transpose'):
+    return tf.transpose(tensor, perm=perm, name=name)
+
+
+def reshape(tensor, shape, name='reshape'):
+    return tf.reshape(tensor, shape=shape, name=name)

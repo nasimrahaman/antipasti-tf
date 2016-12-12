@@ -110,7 +110,7 @@ class AddLayer(Layer):
 
     @utils.forward_pass
     def feedforward(self, input=None):
-        return A.add_n(inputs=input)
+        return A.add_n(tensors=input)
 
 
 class IdentityLayer(Layer):
@@ -161,3 +161,126 @@ class FunctionLayer(Layer):
     @utils.shape_inference
     def infer_output_shape(self, input_shape=None):
         return self.shape_inference_function(input_shape)
+
+
+class SliceDistributedLayer(Layer):
+    """
+    Layer for distributing 2D layers along 'DH', 'HW' or 'DW' slices of a 'BDHWC' tensor, where
+        D = Depth,
+        H = Height
+        W = Width
+        B = Batch
+        C = Channel
+    """
+
+    _MAP_APPLY_ON_TO_IMAGE_AXIS = {'HW': 0, 'DW': 1, 'DH': 2}
+
+    def __init__(self, layer, apply_on='HW', num_slices=None, **layer_kwargs):
+        # Initialize superclass
+        super(SliceDistributedLayer, self).__init__(**layer_kwargs)
+        # Private
+        self._apply_on = None
+
+        # Assignments
+        self.num_slices = num_slices
+        self.apply_on = apply_on
+        self.child_layer = layer
+
+        # Shape inference
+        self.input_shape = self.get_input_shape_from_child()
+
+    def get_input_shape_from_child(self, child_layer=None):
+        if child_layer is None:
+            assert hasattr(self, 'child_layer'), \
+                self._stamp_string("The child_layer is yet to be defined.")
+            child_layer = self.child_layer
+
+        # Make sure the child is 2D
+        assert child_layer.dimensions == 2, \
+            self._stamp_string("The `child_layer` must be 2 dimensional, but it's {}D.".
+                               format(self.child_layer.dimensions))
+
+        input_shape = child_layer.input_shape[:]
+        input_shape.insert(self.tensor_axis, self.num_slices)
+        return input_shape
+
+    @property
+    def apply_on(self):
+        return self._apply_on
+
+    @apply_on.setter
+    def apply_on(self, value):
+        if value not in self._MAP_APPLY_ON_TO_IMAGE_AXIS:
+            raise ValueError(self._stamp_string("`apply_on` must be in {}. Got {} instead.".
+                                                format(self._MAP_APPLY_ON_TO_IMAGE_AXIS.keys(), value)))
+        self._apply_on = value
+
+    @property
+    def image_axis(self):
+        return self._MAP_APPLY_ON_TO_IMAGE_AXIS.get(self.apply_on)
+
+    @image_axis.setter
+    def image_axis(self, value):
+        _INV_MAP_APPLY_ON_TO_IMAGE_AXIS = {val: key for key, val in self._MAP_APPLY_ON_TO_IMAGE_AXIS.items()}
+        # Validate value
+        if value not in _INV_MAP_APPLY_ON_TO_IMAGE_AXIS.keys():
+            raise ValueError(self._stamp_string("`image_axis` must be in {}. Got {} instead.".
+                                                format(_INV_MAP_APPLY_ON_TO_IMAGE_AXIS.keys(), value)))
+        # Set apply_on
+        self.apply_on = _INV_MAP_APPLY_ON_TO_IMAGE_AXIS[value]
+
+    @property
+    def tensor_axis(self):
+        # Infer from image_axis (add one for the batch axis)
+        return self.image_axis + 1
+
+    @utils.shape_inference
+    def infer_output_shape(self, input_shape=None):
+        # Check if num_slices can be inferred anew
+        if input_shape[self.tensor_axis] is not None:
+            self.num_slices = input_shape[self.tensor_axis]
+
+        # Infer output_shape from child
+        child_input_shape = input_shape[:]
+        child_input_shape.pop(self.tensor_axis)
+        child_output_shape = self.child_layer.infer_output_shape(input_shape=child_input_shape)[:]
+        # Process infered output shape
+        output_shape = child_output_shape.insert(self.tensor_axis, self.num_slices)
+        return output_shape
+
+    @utils.layer_initialization
+    def initialize_layer(self, input_shape=None):
+        self.child_layer.initialize_layer(input_shape=input_shape)
+
+    @utils.forward_pass
+    def feedforward(self, input=None):
+        # The more scenic route would be to use the inferred output shape, but we avoid doing that for robustness.
+        # Get axes over which the child layer is NOT parallelized
+        child_layer_axes = [1, 2, 3]
+        child_layer_axes.remove(self.tensor_axis)
+        # Transpose input
+        input_transposed = A.transpose(input,
+                                       perm=[0, self.tensor_axis, child_layer_axes[0], child_layer_axes[1], 4])
+        # Get symbolic shape of the transposed input
+        input_transposed_shape = A.shape(input_transposed, symbolic=True)
+        batch_size = input_transposed_shape[0]
+        num_slices = input_transposed_shape[1]
+        # Tensorflow doesn't support '+' operator overloading for list concatenation
+        input_transposed_reshaped = A.reshape(input_transposed,
+                                              shape=[-1,
+                                                     input_transposed_shape[2],
+                                                     input_transposed_shape[3],
+                                                     input_transposed_shape[4]])
+        # Apply child layer and get the symbolic shape of the resulting tensor
+        output_transposed_reshaped = self.child_layer.feedforward(input=input_transposed_reshaped)
+        output_transposed_reshaped_shape = A.shape(output_transposed_reshaped, symbolic=True)
+        # Undo reshape
+        output_transposed = A.reshape(output_transposed_reshaped, shape=[batch_size, num_slices,
+                                                                         output_transposed_reshaped_shape[1],
+                                                                         output_transposed_reshaped_shape[2],
+                                                                         output_transposed_reshaped_shape[3]])
+        # Undo transpose
+        output = A.transpose(output_transposed,
+                             perm=[0, self.tensor_axis, child_layer_axes[0], child_layer_axes[1], 4])
+        # Done
+        return output
