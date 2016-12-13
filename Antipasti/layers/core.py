@@ -15,7 +15,7 @@ class Layer(object):
 
     # WARNING: Renaming 'Layer' would break Antipasti.models.tree.LayerTrainyard.__add__ and
     # Antipasti.models.tree.LayerTrainyard.__mul__. Be sure to make the necessary changes there.
-    def __init__(self, name=None, context_supermanagers=None, device=None, variable_scope=None,
+    def __init__(self, name=None, layer_context_supermanagers=None, device=None, variable_scope=None,
                  other_context_managers=None):
         """
         Constructor for the Layer superclass.
@@ -39,7 +39,7 @@ class Layer(object):
         self.name = name
 
         # Set context supermanager
-        self.layer_context_supermanagers = context_supermanagers if context_supermanagers is not None else \
+        self.layer_context_supermanagers = layer_context_supermanagers if layer_context_supermanagers is not None else \
             utils.get_layer_context_supermanagers(device=device, variable_scope=variable_scope,
                                                   other_context_managers=other_context_managers)
 
@@ -97,10 +97,8 @@ class Layer(object):
 
             if reinitialization_required:
                 _xs[_x_num] = utils.get_layer_xy_placeholders(input_shape=_input_shapes[_x_num],
-                                                              device=self.device,
-                                                              variable_scope=self.variable_scope,
-                                                              layer_id=self.name,
-                                                              context_managers=self.given_context_managers)['x']
+                                                              layer_id=self.name, context_supermanager=
+                                                              self.layer_context_supermanagers.feedforward_csm)['x']
                 self._is_fedforward = False
             elif shape_setting_required:
                 # We're almost good, just need to set the shape
@@ -263,10 +261,10 @@ class Layer(object):
         return 1 if not py.islistoflists(self.output_shape) else len(self.output_shape)
 
     @property
-    def input_dimensions(self):
+    def input_tensor_dimensions(self):
         """
         Dimensions of the input tensor(s), i.e. `len(input.shape)`.
-        If more than one input go in to the layer, `input_dimensions` is a list of input dimensions.
+        If more than one input go in to the layer, `input_tensor_dimensions` is a list of input dimensions.
 
         :rtype: int or list of int
         """
@@ -277,10 +275,10 @@ class Layer(object):
         return py.delist([len(ishp) for ishp in py.list2listoflists(self.input_shape)])
 
     @property
-    def output_dimensions(self):
+    def output_tensor_dimensions(self):
         """
         Dimensions of the output tensor(s), i.e. `len(output.shape)`.
-        If more than one output comes out from the layer, `output_dimensions` is a list of output dimensions.
+        If more than one output comes out from the layer, `output_tensor_dimensions` is a list of output dimensions.
 
         :rtype: int or list of int
         """
@@ -392,9 +390,26 @@ class Layer(object):
             for parameter_variable, parameter_value in zip(self.parameters, parameters):
                 A.set_value(var=parameter_variable, value=parameter_value)
 
-    def __call__(self, input):
-        """This should be remniscent of the Keras functional API."""
-        return self.feedforward(input)
+    def __call__(self, input, with_device=None):
+        """Equivalent to the feedforward method, but with a certain device."""
+        if with_device is not None:
+            assert isinstance(with_device, str), \
+                self._stamp_string("While calling a LayerTrainyard, the provided `with_device` must be a string. "
+                                   "Got {} instead.".format(with_device.__class__.__name__))
+            # Get current devices
+            current_devices = dict(self.device)
+            # Get new devices (as given by with_device)
+            new_devices = dict(current_devices)
+            new_devices.update({'feedforward': with_device})
+            # Set new devices
+            self.device = new_devices
+        # Build graph
+        output = self.feedforward(input)
+        # Revert to the old device settings
+        if with_device is not None:
+            self.device = current_devices
+        # Return output
+        return output
 
     def __add__(self, other):
         """

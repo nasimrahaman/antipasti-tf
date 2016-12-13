@@ -118,10 +118,10 @@ class Model(object):
         return 1 if not py.islistoflists(self.output_shape) else len(self.output_shape)
 
     @property
-    def input_dimensions(self):
+    def input_tensor_dimensions(self):
         """
         Dimensions of the input tensor(s), i.e. `len(input.shape)`.
-        If more than one input go in to the layer, `input_dimensions` is a list of input dimensions.
+        If more than one input go in to the layer, `input_tensor_dimensions` is a list of input dimensions.
 
         :rtype: int or list of int
         """
@@ -132,10 +132,10 @@ class Model(object):
         return py.delist([len(ishp) for ishp in py.list2listoflists(self.input_shape)])
 
     @property
-    def output_dimensions(self):
+    def output_tensor_dimensions(self):
         """
         Dimensions of the output tensor(s), i.e. `len(output.shape)`.
-        If more than one output comes out from the layer, `output_dimensions` is a list of output dimensions.
+        If more than one output comes out from the layer, `output_tensor_dimensions` is a list of output dimensions.
 
         :rtype: int or list of int
         """
