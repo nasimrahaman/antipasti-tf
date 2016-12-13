@@ -108,8 +108,8 @@ def conv(maps_in, maps_out, kernel_size, stride=None, dilation=None, border_mode
     rate = tuple(dilation) if dilation is not None else (1,) * dimensions
 
     # A few consistency checks
-    is_strided = subsample != (1, 1) or subsample != (1, 1, 1)
-    is_dilated = dilation != (1, 1) or dilation != (1, 1, 1)
+    is_strided = subsample != (1, 1) and subsample != (1, 1, 1)
+    is_dilated = rate != (1, 1) and rate != (1, 1, 1)
     is_3D = dimensions == 3
     # Dilated convolutions support in 2D only
     assert not (is_3D and is_dilated), "No support for 3D dilated convolutions yet."
