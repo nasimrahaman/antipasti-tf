@@ -195,10 +195,17 @@ class SliceDistributedLayer(Layer):
                 self._stamp_string("The child_layer is yet to be defined.")
             child_layer = self.child_layer
 
+        # Make sure the child takes only one input and produces only one output
+        if not (child_layer.num_inputs == 1 and child_layer.num_outputs == 1):
+            raise NotImplementedError(self._stamp_string("`SliceDistributedLayer` is only implemented for "
+                                                         "layers with 1 input and 1 output. The provided "
+                                                         "`layer` as {} inputs and {} outputs.".
+                                                         format(child_layer.num_inputs, child_layer.num_outputs)))
+
         # Make sure the child is 2D
-        assert child_layer.dimensions == 2, \
-            self._stamp_string("The `child_layer` must be 2 dimensional, but it's {}D.".
-                               format(self.child_layer.dimensions))
+        assert child_layer.input_tensor_dimensions == 4, \
+            self._stamp_string("The `child_layer` must be 2 dimensional, but it's {}-D.".
+                               format({4: 2, 5: 3}[self.child_layer.input_tensor_dimensions]))
 
         input_shape = child_layer.input_shape[:]
         input_shape.insert(self.tensor_axis, self.num_slices)
@@ -245,8 +252,8 @@ class SliceDistributedLayer(Layer):
         child_input_shape.pop(self.tensor_axis)
         child_output_shape = self.child_layer.infer_output_shape(input_shape=child_input_shape)[:]
         # Process infered output shape
-        output_shape = child_output_shape.insert(self.tensor_axis, self.num_slices)
-        return output_shape
+        child_output_shape.insert(self.tensor_axis, self.num_slices)
+        return child_output_shape
 
     @utils.layer_initialization
     def initialize_layer(self, input_shape=None):
