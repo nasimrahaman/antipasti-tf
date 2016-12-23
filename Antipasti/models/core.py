@@ -146,6 +146,14 @@ class Model(object):
         return py.delist([len(oshp) for oshp in py.list2listoflists(self.output_shape)])
 
     @property
+    def device(self):
+        return NotImplemented
+
+    @device.setter
+    def device(self, value):
+        raise NotImplementedError
+
+    @property
     def parameters(self):
         """Parameters (e.g. Weights, Biases, etc.) of the layer."""
         return self._parameters

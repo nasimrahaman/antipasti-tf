@@ -92,11 +92,23 @@ class LayerTrainyard(Model):
         else:
             # input shape is given.
             _input_shape = value
+
         # Run shape inference and set _output_shape
         output_shape = self.infer_output_shape(input_shape=_input_shape)
+
         # Set input and output shapes
         self._input_shape = _input_shape
         self._output_shape = output_shape
+
+    @property
+    def device(self):
+        return self._map_signature(lambda coach: coach.device)
+
+    @device.setter
+    def device(self, value):
+        def _set_device(coach):
+            coach.device = value
+        self._map_signature(_set_device)
 
     @property
     def _is_fedforward(self):
@@ -275,6 +287,50 @@ class LayerTrainyard(Model):
                                                "got '{}' instead.".format(other.__class__.__name__)))
 
         return LayerTrainyard([[self, other]])
+
+    # Call with a device
+    def __call__(self, input, with_device=None):
+        """
+        Build model graph with a given input and device.
+
+        :type input: any
+        :param input: Input to the model (must be a tensor)
+
+        :type with_device: str or dict
+        :param with_device: The device to build the graph on. Can be a string like 'gpu0' or 'cpu' or '/gpu:0'
+
+        :return: Output tensor obtained by building the model on the given input.
+        """
+        # Set device if required
+        if with_device is not None:
+            # Log default devices
+            default_device = self.device
+            # Set device (make sure it's a string first)
+            if not (isinstance(with_device, str) or isinstance(with_device, dict)):
+                raise ValueError(self._stamp_string("Expected the given device (provided as "
+                                                    "kwarg `with_device` while calling a LayerTrainyard) "
+                                                    "to be a string or a dictionary with the "
+                                                    "key 'feedforward'. Got {} instead.".
+                                                    format(with_device.__class__.__name__)))
+            # Build device identifier
+            if not isinstance(with_device, dict):
+                with_device = {'feedforward': with_device}
+            else:
+                assert 'feedforward' in with_device.keys(), \
+                    self._stamp_string("'feedforward' must be in the dictionary key if `with_device` "
+                                       "kwarg of LayerTrainyard's __call__ method is a dictionary.")
+                with_device = {'feedforward': with_device['feedforward']}
+            # Set device
+            self.device = with_device
+
+        # Feedforward
+        output = self.feedforward(input=input)
+
+        # Set device back to default
+        if with_device is not None:
+            self.device = default_device
+
+        return output
 
     # Syntactic candy
     def __getitem__(self, item):
