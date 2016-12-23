@@ -367,8 +367,8 @@ def make_antipasti_unregularizable(parameters):
 # -------- VARIABLE MANAGEMENT UTILITIES --------
 
 
-def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, variable_scope=None,
-                              context_managers=None, layer_id=None):
+def get_layer_xy_placeholders(input_shape=None, output_shape=None, context_supermanager=None, device=None,
+                              variable_scope=None, other_context_managers=None, layer_id=None):
     """
     Every Antipasti `Layer` should have 'x' (input) and 'y' (output) attributes (tf.placeholder).
     This function generates them given the input and output shapes.
@@ -380,13 +380,15 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, 
     # Fetch x variable
     if input_shape is not None:
         if not py.islistoflists(input_shape):
-            xy_variables['x'] = A.placeholder(shape=input_shape, device=device, variable_scope=variable_scope,
-                                              other_context_managers=context_managers,
+            xy_variables['x'] = A.placeholder(shape=input_shape, context_supermanager=context_supermanager,
+                                              device=device, variable_scope=variable_scope,
+                                              other_context_managers=other_context_managers,
                                               antipasti_name=(None if layer_id is None else
                                                               get_parameter_tag(layer_id, 'x')))
         else:
-            xy_variables['x'] = [A.placeholder(shape=_input_shape, device=device, variable_scope=variable_scope,
-                                               other_context_managers=context_managers,
+            xy_variables['x'] = [A.placeholder(shape=_input_shape, context_supermanager=context_supermanager,
+                                               device=device, variable_scope=variable_scope,
+                                               other_context_managers=other_context_managers,
                                                antipasti_name=(None if layer_id is None else
                                                                get_parameter_tag(layer_id, 'x{}'.format(_input_id))))
                                  for _input_id, _input_shape in enumerate(input_shape)]
@@ -394,13 +396,15 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, device=None, 
 
     if output_shape is not None:
         if not py.islistoflists(output_shape):
-            xy_variables['y'] = A.placeholder(shape=output_shape, device=device, variable_scope=variable_scope,
-                                              other_context_managers=context_managers,
+            xy_variables['y'] = A.placeholder(shape=output_shape, context_supermanager=context_supermanager,
+                                              device=device, variable_scope=variable_scope,
+                                              other_context_managers=other_context_managers,
                                               antipasti_name=(None if layer_id is None else
                                                               get_parameter_tag(layer_id, 'y')))
         else:
-            xy_variables['y'] = [A.placeholder(shape=_output_shape, device=device, variable_scope=variable_scope,
-                                               other_context_managers=context_managers,
+            xy_variables['y'] = [A.placeholder(shape=_output_shape, context_supermanager=context_supermanager,
+                                               device=device, variable_scope=variable_scope,
+                                               other_context_managers=other_context_managers,
                                                antipasti_name=(None if layer_id is None else
                                                                get_parameter_tag(layer_id, 'y{}'.format(_output_id))))
                                  for _output_id, _output_shape in enumerate(output_shape)]
