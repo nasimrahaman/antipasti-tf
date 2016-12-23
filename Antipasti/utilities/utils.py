@@ -421,6 +421,9 @@ class LayerContextSupermanagers(object):
     the parameters are initialized on the CPU with a certain set of context managers (i.e. tf.device('/cpu:0')) but
     fedforward on the GPU with another set of context managers (i.e. tf.device('/gpu:0')).
     """
+
+    _ACCESSIBLE_ATTRIBUTES = ['device', 'variable_scope', 'other_context_managers']
+
     def __init__(self, initialize_csm=None, feedforward_csm=None, default_csm_name='initialize'):
         """
         :type initialize_csm: Antipasti.backend.ContextSupermanager
@@ -435,7 +438,6 @@ class LayerContextSupermanagers(object):
         # Property containers
         self._default_csm_name = None
         self._default_csm = None
-        self._ACCESSIBLE_ATTRIBUTES = ['device', 'variable_scope', 'other_context_managers']
 
         # Attrubute Assignment
         self.initialize_csm = initialize_csm
