@@ -71,13 +71,21 @@ class Optimizer(ModelApp):
 class Loss(ModelApp):
     """Abstract class for a loss function (not neccesarily an objective)."""
 
-    _ALLOWED_KWARGS = {'aggregation_method'}
+    _ALLOWED_KWARGS = {'aggregation_method', 'weights', 'y', 'yt', 'loss_vector', 'loss_scalar'}
 
     def __init__(self, model=None, **kwargs):
         self.model = model
 
+        # Validate kwargs
+        self._validate_kwargs(**kwargs)
+
         # Read from kwargs
         self.aggregation_method = kwargs.get('aggregation_method', default='mean')
+        self.weights = kwargs.get('weights')
+        self.y = kwargs.get('y')
+        self.yt = kwargs.get('yt')
+        self.loss_vector = kwargs.get('loss_vector')
+        self.loss_scalar = kwargs.get('loss_scalar')
 
         # Property containers
         self._weights = None
@@ -95,6 +103,17 @@ class Loss(ModelApp):
 
     @weights.setter
     def weights(self, value):
+        # Do nothing if value is None
+        if value is None:
+            return
+        # value must have the same shape as y (prediction) and yt (target) in all but
+        # the channel axis, where it must be of size 1.
+        value_shape = A.shape(value)
+        if value_shape is not None:
+            # Check whether shape is right along the channel axis
+            assert value_shape[-1] == 1 or value_shape[-1] is None, \
+                self._stamp_string("The weight tensor of inferred shape {} must be of length 1 along "
+                                   "the channel axis, got {} instead.".format(value_shape, value_shape[-1]))
         self._weights = value
 
     @property
@@ -119,6 +138,7 @@ class Loss(ModelApp):
         self._set_method(value)
 
     def _set_method(self, method, is_keras_objective=False):
+        # TODO: Fetch from registry if value is a string
         pass
 
     @property
@@ -150,13 +170,29 @@ class Loss(ModelApp):
             self._stamp_string("Shape of prediction `y` (= {}) is not compatible "
                                "with that of target `yt` (= {}).".format(y_shape, yt_shape))
 
+    def _get_y_and_yt_from_model(self):
+        self.y = self.model.y
+        self.yt = self.model.yt
+
+    @property
+    def _y_is_defined(self):
+        return self._y is not None
+
+    @property
+    def _yt_is_defined(self):
+        return self._y is not None
+
     @property
     def loss_vector(self):
         # Check if loss vector is already cached
         if self._loss_vector is not None:
             return self._loss_vector
         else:
-            # if not, validate y and yt
+            # if not, make sure y and yt are defined
+            if not (self._y_is_defined and self._yt_is_defined):
+                # if either y or yt is not defined, get both from model.
+                self._get_y_and_yt_from_model()
+            # validate y and yt
             self.assert_y_and_yt_shapes_are_compatible()
             # ... and compute loss vector (symbolically)
             self._loss_vector = self._get_loss_vector()
@@ -164,6 +200,9 @@ class Loss(ModelApp):
 
     @loss_vector.setter
     def loss_vector(self, value):
+        # Do nothing else if value is None
+        if value is None:
+            return
         # Validate value ndim if possible
         value_ndim = A.ndim(value)
         if value_ndim is not None:
@@ -175,7 +214,15 @@ class Loss(ModelApp):
 
     def _get_loss_vector(self):
         """Get loss as a vector, such that its length equals the number of batches."""
-        return self.method(self.y, self.yt)
+        # Flatten
+        flattened_y = A.image_tensor_to_matrix(self.y)
+        flattened_yt = A.image_tensor_to_matrix(self.yt)
+        flattened_weights = A.image_tensor_to_matrix(self.weights)
+        # Evaluate loss and weight
+        unweighted_loss_vector = self.method(flattened_y, flattened_yt)
+        weighted_loss_vector = self.apply_weights(unweighted_loss_vector, flattened_weights)
+        # Done.
+        return weighted_loss_vector
 
     @property
     def loss_scalar(self):
@@ -187,6 +234,9 @@ class Loss(ModelApp):
 
     @loss_scalar.setter
     def loss_scalar(self, value):
+        # Do nothing else if value is None
+        if value is None:
+            return
         # Validate value ndim if possible
         value_ndim = A.ndim(value)
         if value_ndim is not None:
@@ -209,6 +259,10 @@ class Loss(ModelApp):
         """Get the loss given a model and write as model attribute."""
         # TODO
         return model
+
+    @staticmethod
+    def apply_weights(tensor, weights):
+        return A.multiply(weights, tensor)
 
 
 class Regularizer(ModelApp):

@@ -608,7 +608,26 @@ def shape(tensor, symbolic=False):
         return tf.shape(tensor)
 
 
+def tf_shape_is_defined(tensor):
+    """Checks whether tensorflow has tracked the shape of `tensor`."""
+    return shape(tensor) is not None
+
+
 def concatenate(tensors, axis=0, name='concat'):
+    """
+    Concatenates multiple tensors along a given axis.
+
+    :type tensors: list
+    :param tensors: List of tensors to concatenate.
+
+    :type axis: int
+    :param axis: Axis along which to concatenate. Can be -1.
+
+    :type name: str
+    :param name: Name for the concatenate op.
+
+    :return: Concatenated tensor.
+    """
     if axis < 0:
         # We need to determine the number of dimensions in the tensor because tensorflow can't (as of the day)
         _ndims = [ndim(tensor) for tensor in tensors]
@@ -629,23 +648,52 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
-def add_n(tensors, name='add_n'):
-    return tf.add_n(inputs=tensors, name=name)
-
-
 def expand_dims(tensor, dim, name='expand_dims'):
+    """Alias for tensorflow.expand_dims."""
     return tf.expand_dims(tensor, dim, name=name)
 
 
 def transpose(tensor, perm=None, name='transpose'):
+    """Alias for tensorflow.transpose."""
     return tf.transpose(tensor, perm=perm, name=name)
 
 
 def reshape(tensor, shape, name='reshape'):
+    """Alias for tensorflow.reshape."""
     return tf.reshape(tensor, shape=shape, name=name)
 
 
+# ------------------- TENSOR-ARITHMETIC -------------------
+
+
+def add_n(tensors, name='add_n'):
+    """Alias for tensorflow.add_n."""
+    return tf.add_n(inputs=tensors, name=name)
+
+
 def reduce_(tensor, mode, axis=0, keep_dims=False, name=None):
+    """
+    Reduce a `tensor` along a given `axis` by a given op (specified as `mode`).
+
+    :type tensor: any
+    :param tensor: Tensor to reduce.
+
+    :type mode: str
+    :param mode: Reduction mode. Can be one of:
+                 {'sum', 'prod', 'min', 'max', 'mean', 'all', 'any', 'logsumexp'}
+
+    :type axis: int
+    :param axis: Axis along which to reduce.
+
+    :type keep_dims: bool
+    :param keep_dims: Whether to keep dimension after reduction (or to squeeze it out).
+
+    :type name: str
+    :param name: Name for the reduction op. Setting name to 'reduce' and mode to 'max'
+                 would result in the final name being 'reduce_max'.
+
+    :return: Reduced tensor.
+    """
     allowed_reduction_modes = {'sum', 'prod', 'min', 'max', 'mean', 'all', 'any', 'logsumexp'}
     assert mode in allowed_reduction_modes, \
         "Given reduction mode '{}' is not in the set of allowed reduction modes. " \
@@ -656,6 +704,11 @@ def reduce_(tensor, mode, axis=0, keep_dims=False, name=None):
     return reduce_fn(tensor, axis=axis, keep_dims=keep_dims, name=name)
 
 
+def multiply(*tensors, **kwargs):
+    op_name = kwargs.get('name', 'mul')
+    return reduce(lambda x, y: tf.mul(x, y, name=op_name), tensors)
+
+
 # ------------------- NEURAL-NET-HELPERS -------------------
 
 
@@ -664,9 +717,15 @@ def image_tensor_to_matrix(tensor):
     Convert an image tensor (as BHWC or BDHWC) to a matrix of shape (B * H * W, C).
     Adds the known original shape as a field in antipasti collection.
     """
-    # TODO
-    pass
+    # Log original shape
+    shape_before_flattening = shape(tensor, symbolic=False)
+    # Get symbolic value for the number of channels
+    num_channels = shape(tensor, symbolic=True)[-1]
+    # Flatten
+    flat_matrix = reshape(tensor, shape=[-1, num_channels], name='flatten_image_tensor_to_matrix')
+    # Have original shape as a field in antipasti collection
+    # (such that the flat matrix can in principle be unflattened)
+    py2.add_to_antipasti_collection(flat_matrix, shape_before_flattening=shape_before_flattening)
+    # Done.
+    return flat_matrix
 
-
-def apply_weights(tensor):
-    pass
