@@ -643,3 +643,30 @@ def transpose(tensor, perm=None, name='transpose'):
 
 def reshape(tensor, shape, name='reshape'):
     return tf.reshape(tensor, shape=shape, name=name)
+
+
+def reduce_(tensor, mode, axis=0, keep_dims=False, name=None):
+    allowed_reduction_modes = {'sum', 'prod', 'min', 'max', 'mean', 'all', 'any', 'logsumexp'}
+    assert mode in allowed_reduction_modes, \
+        "Given reduction mode '{}' is not in the set of allowed reduction modes. " \
+        "Allowed modes are the following: {}".format(mode, allowed_reduction_modes)
+    # Get reduction function
+    reduce_fn = get("reduce_{}".format(mode))
+    # Apply reduction function
+    return reduce_fn(tensor, axis=axis, keep_dims=keep_dims, name=name)
+
+
+# ------------------- NEURAL-NET-HELPERS -------------------
+
+
+def image_tensor_to_matrix(tensor):
+    """
+    Convert an image tensor (as BHWC or BDHWC) to a matrix of shape (B * H * W, C).
+    Adds the known original shape as a field in antipasti collection.
+    """
+    # TODO
+    pass
+
+
+def apply_weights(tensor):
+    pass
