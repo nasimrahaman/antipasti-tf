@@ -7,6 +7,9 @@ from collections import OrderedDict
 from ..legacy import pykit as py
 
 
+# ---------------- FUNCTION-TOOLS ----------------
+
+
 def vectorize_function(_string_stamper=None):
     """
     Decorator for vectorizing a function with proper broadcasting. Exercise extreme caution when using with
@@ -52,6 +55,75 @@ def vectorize_function(_string_stamper=None):
         return _function
 
     return _vectorize_function
+
+
+# ---------------- COLLECTION-MANAGEMENT UTILITIES ----------------
+
+
+def add_to_antipasti_collection(objects, **key_value_dict):
+    """Populate objects' internal antipasti collection with (key, value) pairs from `key_value_dict`."""
+    for object_ in py.obj2list(objects, ndarray2list=False):
+        # Check if object has a collection dict already; if it doesn't, give it one
+        if not hasattr(object_, '_antipasti_collection'):
+            setattr(object_, '_antipasti_collection', {})
+        # Update collection with key_value_dict (getattr to make the pycharm linter shut the fuck up)
+        getattr(object_, '_antipasti_collection').update(key_value_dict)
+
+
+def get_from_antipasti_collection(object_, key, default=None):
+    """
+    Get value for a given key in `object_`'s internal antipasti collection,
+    and return `default` if key is not found.
+    """
+    if not hasattr(object_, '_antipasti_collection'):
+        return default
+    else:
+        getattr(object_, '_antipasti_collection').get(key, default=default)
+
+
+def is_antipasti_trainable(parameter):
+    """Function to check if (Antipasti thinks) a parameter is trainable."""
+    return get_from_antipasti_collection(parameter, 'trainable', default=True)
+
+
+def make_antipasti_trainable(parameters):
+    """Make a parameter trainable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, trainable=True)
+
+
+def make_antipasti_untrainable(parameters):
+    """Make a parameter untrainable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, trainable=False)
+
+
+def is_antipasti_regularizable(parameter):
+    """Function to check if (Antipasti thinks) a parameter is regularizable."""
+    return get_from_antipasti_collection(parameter, 'regularizable', default=True)
+
+
+def make_antipasti_regularizable(parameters):
+    """Make a parameter regularizable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, regularizable=True)
+
+
+def make_antipasti_unregularizable(parameters):
+    """Make a parameter regularizable with Antipasti."""
+    # Get parameters as a list if passed as a parameter collection
+    if hasattr(parameters, 'as_list'):
+        parameters = parameters.as_list()
+    add_to_antipasti_collection(parameters, regularizable=False)
+
+
+# ---------------- PARAMETER-TAGS ----------------
 
 
 def is_parameter_tag(tag):

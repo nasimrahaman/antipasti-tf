@@ -15,7 +15,7 @@ import tensorflow as tf
 from contextlib2 import ExitStack, contextmanager
 
 from .legacy import pykit as py
-from .utilities.pyutils2 import split_parameter_tag
+from .utilities import pyutils2 as py2
 
 
 # ------------------- META -------------------
@@ -245,7 +245,7 @@ class ContextSupermanager(object):
         if parameter_tag is not None:
             assert isinstance(parameter_tag, str), \
                 "`parameter_tag` must be a string, got {} instead.".format(parameter_tag.__class__.__name__)
-            layer_id_from_tag, _ = split_parameter_tag(parameter_tag, check=True)
+            layer_id_from_tag, _ = py2.split_parameter_tag(parameter_tag, check=True)
             assert (layer_id is None) or layer_id_from_tag == layer_id, \
                 "Provided layer_id {} is not consistent with " \
                 "that obtained from the parameter tag {} ({}).".format(layer_id, parameter_tag,
@@ -327,7 +327,7 @@ class ContextSupermanager(object):
     @staticmethod
     def parameter_tag_to_variable_scope(parameter_tag):
         if parameter_tag is not None:
-            layer_id, parameter_name = split_parameter_tag(parameter_tag, check=True)
+            layer_id, parameter_name = py2.split_parameter_tag(parameter_tag, check=True)
             return layer_id
         else:
             return None

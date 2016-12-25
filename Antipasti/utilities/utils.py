@@ -2,9 +2,11 @@ __author__ = "Nasim Rahaman"
 
 from contextlib2 import contextmanager
 
+import pyutils2 as py2
 from .pyutils2 import DictList, get_parameter_tag
-from .. import backend as A
 from ..legacy import pykit as py
+
+from .. import backend as A
 
 
 # -------- CORE DECORATORS --------
@@ -298,70 +300,19 @@ def get_shape(variable):
     return py.delistlistoflists([A.shape(var) for var in py.obj2list(variable)])
 
 
-# -------- COLLECTION MANAGEMENT UTILITIES --------
+# -------- ALIASES FOR COLLECTION MANAGEMENT UTILITIES --------
 
 
-def add_to_antipasti_collection(objects, **key_value_dict):
-    """Populate objects' internal antipasti collection with (key, value) pairs from `key_value_dict`."""
-    for object_ in py.obj2list(objects, ndarray2list=False):
-        # Check if object has a collection dict already; if it doesn't, give it one
-        if not hasattr(object_, '_antipasti_collection'):
-            setattr(object_, '_antipasti_collection', {})
-        # Update collection with key_value_dict (getattr to make the pycharm linter shut the fuck up)
-        getattr(object_, '_antipasti_collection').update(key_value_dict)
+add_to_antipasti_collection = py2.add_to_antipasti_collection
+get_from_antipasti_collection = py2.get_from_antipasti_collection
 
+is_antipasti_trainable = py2.is_antipasti_trainable
+make_antipasti_trainable = py2.make_antipasti_trainable
+make_antipasti_untrainable = py2.make_antipasti_untrainable
 
-def get_from_antipasti_collection(object_, key, default=None):
-    """
-    Get value for a given key in `object_`'s internal antipasti collection,
-    and return `default` if key is not found.
-    """
-    if not hasattr(object_, '_antipasti_collection'):
-        return default
-    else:
-        getattr(object_, '_antipasti_collection').get(key, default=default)
-
-
-def is_antipasti_trainable(parameter):
-    """Function to check if (Antipasti thinks) a parameter is trainable."""
-    return get_from_antipasti_collection(parameter, 'trainable', default=True)
-
-
-def make_antipasti_trainable(parameters):
-    """Make a parameter trainable with Antipasti."""
-    # Get parameters as a list if passed as a parameter collection
-    if hasattr(parameters, 'as_list'):
-        parameters = parameters.as_list()
-    add_to_antipasti_collection(parameters, trainable=True)
-
-
-def make_antipasti_untrainable(parameters):
-    """Make a parameter untrainable with Antipasti."""
-    # Get parameters as a list if passed as a parameter collection
-    if hasattr(parameters, 'as_list'):
-        parameters = parameters.as_list()
-    add_to_antipasti_collection(parameters, trainable=False)
-
-
-def is_antipasti_regularizable(parameter):
-    """Function to check if (Antipasti thinks) a parameter is regularizable."""
-    return get_from_antipasti_collection(parameter, 'regularizable', default=True)
-
-
-def make_antipasti_regularizable(parameters):
-    """Make a parameter regularizable with Antipasti."""
-    # Get parameters as a list if passed as a parameter collection
-    if hasattr(parameters, 'as_list'):
-        parameters = parameters.as_list()
-    add_to_antipasti_collection(parameters, regularizable=True)
-
-
-def make_antipasti_unregularizable(parameters):
-    """Make a parameter regularizable with Antipasti."""
-    # Get parameters as a list if passed as a parameter collection
-    if hasattr(parameters, 'as_list'):
-        parameters = parameters.as_list()
-    add_to_antipasti_collection(parameters, regularizable=False)
+is_antipasti_regularizable = py2.is_antipasti_regularizable
+make_antipasti_regularizable = py2.make_antipasti_regularizable
+make_antipasti_unregularizable = py2.make_antipasti_unregularizable
 
 
 # -------- VARIABLE MANAGEMENT UTILITIES --------
@@ -375,7 +326,7 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, context_super
     """
 
     # Container for variables
-    xy_variables = DictList([])
+    xy_variables = py2.DictList([])
 
     # Fetch x variable
     if input_shape is not None:
