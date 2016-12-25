@@ -71,7 +71,7 @@ class Optimizer(ModelApp):
 class Loss(ModelApp):
     """Abstract class for a loss function (not neccesarily an objective)."""
 
-    _ALLOWED_KWARGS = {'aggregation_method', 'weights', 'y', 'yt', 'loss_vector', 'loss_scalar'}
+    _ALLOWED_KWARGS = {'aggregation_method', 'weights', 'y', 'yt', 'loss_vector', 'loss_scalar', 'method'}
 
     def __init__(self, model=None, **kwargs):
         self.model = model
@@ -81,6 +81,7 @@ class Loss(ModelApp):
 
         # Read from kwargs
         self.aggregation_method = kwargs.get('aggregation_method', default='mean')
+        self.method = kwargs.get('method')
         self.weights = kwargs.get('weights')
         self.y = kwargs.get('y')
         self.yt = kwargs.get('yt')
@@ -135,6 +136,9 @@ class Loss(ModelApp):
 
     @method.setter
     def method(self, value):
+        # Do nothing if value is None
+        if value is None:
+            return
         self._set_method(value)
 
     def _set_method(self, method, is_keras_objective=False):
@@ -143,10 +147,14 @@ class Loss(ModelApp):
 
     @property
     def y(self):
-        # Check if y was defined
-        if self._y is None:
+        # If this instance is bound to a model, we use the y defined in the model.
+        if self.model is not None:
+            return self.model.y
+        elif self._y is None:
+            # No model is provided. We make sure self._y is not None.
             raise RuntimeError(self._stamp_string("`y` (prediction) is yet to be defined."))
-        return self._y
+        else:
+            return self._y
 
     @y.setter
     def y(self, value):
@@ -154,10 +162,14 @@ class Loss(ModelApp):
 
     @property
     def yt(self):
-        # Check if y was defined
-        if self._yt is None:
+        # If this instance is bound to a model, we use the yt defined in the model.
+        if self.model is not None:
+            return self.model.yt
+        elif self._yt is None:
+            # No model is provided. We make sure self._yt is not None.
             raise RuntimeError(self._stamp_string("`yt` (target) is yet to be defined."))
-        return self._yt
+        else:
+            return self._yt
 
     @yt.setter
     def yt(self, value):
@@ -170,17 +182,13 @@ class Loss(ModelApp):
             self._stamp_string("Shape of prediction `y` (= {}) is not compatible "
                                "with that of target `yt` (= {}).".format(y_shape, yt_shape))
 
-    def _get_y_and_yt_from_model(self):
-        self.y = self.model.y
-        self.yt = self.model.yt
-
     @property
     def _y_is_defined(self):
-        return self._y is not None
+        return (self.model is not None) or (self._y is not None)
 
     @property
     def _yt_is_defined(self):
-        return self._y is not None
+        return (self.model is not None) or (self._y is not None)
 
     @property
     def loss_vector(self):
@@ -188,11 +196,7 @@ class Loss(ModelApp):
         if self._loss_vector is not None:
             return self._loss_vector
         else:
-            # if not, make sure y and yt are defined
-            if not (self._y_is_defined and self._yt_is_defined):
-                # if either y or yt is not defined, get both from model.
-                self._get_y_and_yt_from_model()
-            # validate y and yt
+            # if not, validate y and yt
             self.assert_y_and_yt_shapes_are_compatible()
             # ... and compute loss vector (symbolically)
             self._loss_vector = self._get_loss_vector()
@@ -257,18 +261,50 @@ class Loss(ModelApp):
     @application
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
-        # TODO
-        return model
+        self.model = model
+        model.loss = self
 
     @staticmethod
     def apply_weights(tensor, weights):
         return A.multiply(weights, tensor)
 
+    def unbind_model(self):
+        """Gets rid of the bound model instance."""
+        self.model = None
+
+    def reset(self):
+        self._y = None
+        self._yt = None
+        self._weights = None
+        self._loss_vector = None
+        self._loss_scalar = None
+
 
 class Regularizer(ModelApp):
     """Abstract class for regularizer."""
+
+    _ALLOWED_KWARGS = {'method', 'parameters', 'penalty_scalars',
+                       'aggregation_method', 'coefficient', 'regularization_scalar'}
+
     def __init__(self, model=None, **kwargs):
         self.model = model
+
+        # Containers for properties
+        self._method = None
+        self._parameters = None
+        self._penalty_scalars = None
+        self._aggregation_method = None
+        self._coefficient = None
+        self._regularization_scalar = None
+
+    @property
+    def parameters(self):
+        # Fetch parameters from model if one is bound
+        return NotImplemented
+
+    @parameters.setter
+    def parameters(self, value):
+        raise NotImplementedError
 
     @application
     def apply(self, model):
