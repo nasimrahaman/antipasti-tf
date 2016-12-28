@@ -81,6 +81,11 @@ def get_from_antipasti_collection(object_, key, default=None):
         getattr(object_, '_antipasti_collection').get(key, default=default)
 
 
+def is_in_antipasti_collection(object_, key):
+    """Checks whether a given key is in Antipasti collection of a given object."""
+    return hasattr(object_, '_antipasti_collection') and key in getattr(object_, '_antipasti_collection').keys()
+
+
 def is_antipasti_trainable(parameter):
     """Function to check if (Antipasti thinks) a parameter is trainable."""
     return get_from_antipasti_collection(parameter, 'trainable', default=True)

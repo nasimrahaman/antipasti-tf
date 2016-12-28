@@ -362,6 +362,34 @@ def get_layer_xy_placeholders(input_shape=None, output_shape=None, context_super
     return xy_variables
 
 
+def maintain_y_to_yt_dict(y_to_yt_dict, trainyard_y):
+    """
+    Helper function to prune `y_to_yt_dict` used by Antipasti.models.tree.LayerTrainyard. Keeps
+    training target variables (`yt`) up to speed with the model prediction variables (`y`).
+    """
+    # There are two things we need to do to maintain the dict.
+    # First, check whether there are any extra y's in the dict
+    # which aren't in self.y anymore
+    # Second, check whether there are any new y's in self.y which aren't
+    # in the dict.
+    # Convert trainyard_y to a list
+    _ys = py.obj2list(trainyard_y)
+    # First,
+    extra_ys_in_dict = [_y for _y in y_to_yt_dict.keys() if _y not in _ys]
+    # Get rid of the extra ys
+    for extra_y in extra_ys_in_dict:
+        y_to_yt_dict.pop(extra_y)
+
+    # Second,
+    new_ys_not_in_dict = [_y for _y in _ys if _y not in y_to_yt_dict.keys()]
+    for new_y in new_ys_not_in_dict:
+        # Add new_y to dict
+        # TODO: Fix naming in tensorflow namespace
+        y_to_yt_dict[new_y] = A.placeholder_like(new_y)
+
+    return y_to_yt_dict
+
+
 # -------- CONTEXT MANAGEMENT UTILITIES --------
 
 

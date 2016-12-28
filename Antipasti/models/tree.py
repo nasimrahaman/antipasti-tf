@@ -1,7 +1,10 @@
 from inspect import getmro
+from collections import OrderedDict
 
 from ..legacy import pykit as py
+from ..utilities import pyutils2 as py2
 from ..models import Model
+from ..utilities import utils
 
 
 class LayerTrainyard(Model):
@@ -53,6 +56,27 @@ class LayerTrainyard(Model):
     def y(self):
         # This is simpler than it looks. :-)
         return py.delist(list(py.flatten(self._map_signature(lambda coach: coach.y)[-1])))
+
+    @property
+    def yt(self):
+        # If this is the first time yt is being called, instantiate placeholders.
+        # This procedure is indeed special in the sense that it's model's job to
+        # define target placeholders (and not layers'). This in turn makes it non-
+        # trivial to keep y's and yt's synced.
+        # To solve this, we maintain an dict mapping between y and yts.
+        y_to_yt_dict = py2.get_from_antipasti_collection(self, 'y_to_yt', default={})
+        # Get y as list
+        _ys = py.obj2list(self.y)
+        # Maintain dict
+        y_to_yt_dict = utils.maintain_y_to_yt_dict(y_to_yt_dict, _ys)
+        # Write to antipasti collection (in case this is done for the first time)
+        py2.add_to_antipasti_collection(self, y_to_yt_dict=y_to_yt_dict)
+        # Return in the same order as self.y
+        return py.delist([y_to_yt_dict[_y] for _y in _ys])
+
+    @yt.setter
+    def yt(self, value):
+        raise NotImplementedError(self._stamp_string("`yt` setter is not implemented yet."))
 
     @property
     def trainyard(self):

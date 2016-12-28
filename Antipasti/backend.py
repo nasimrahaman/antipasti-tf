@@ -584,9 +584,49 @@ def placeholder(dtype=_FLOATX, shape=None, context_supermanager=None, device=Non
         # Define variable
         ph = tf.placeholder(to_tf_dtype(dtype), shape=shape, **tf_placeholder_kwargs)
 
+    # Log initialization args and kwargs
+    initialization_args = (to_tf_dtype(dtype),)
+    initialization_kwargs = {'shape': shape}
+    initialization_kwargs.update(tf_placeholder_kwargs)
+
     ph._antipasti_name = antipasti_name
+    py2.add_to_antipasti_collection(ph, context_supermanager=context_supermanager,
+                                    initialization_args=initialization_args,
+                                    initialization_kwargs=initialization_kwargs,
+                                    antipasti_made=True)
     # Return placeholder
     return ph
+
+
+def clone_placeholder(ph):
+    """
+    Clones a given placeholder `ph`. Clone as in initialize with the same code, which could result in e.g.
+    different auto-name, etc. The given placeholder `ph` must have been created with the `placeholder` function.
+    """
+    # Fetch what's required from _antipasti_collection (this should be fine as long as `ph` was
+    # initialized with `placeholder`.)
+    if not py2.get_from_antipasti_collection(ph, 'antipasti_made', False):
+        raise RuntimeError("Can't clone placeholder; it was not built by Antipasti.")
+    context_supermanager = py2.get_from_antipasti_collection(ph, 'context_supermanager')
+    initialization_args = py2.get_from_antipasti_collection(ph, 'initialization_args')
+    initialization_kwargs = py2.get_from_antipasti_collection(ph, 'initialization_kwargs')
+
+    with context_supermanager.manage():
+        new_ph = tf.placeholder(*initialization_args, **initialization_kwargs)
+
+    py2.add_to_antipasti_collection(ph, context_supermanager=context_supermanager,
+                                    initialization_args=initialization_args,
+                                    initialization_kwargs=initialization_kwargs,
+                                    antipasti_made=True)
+    return new_ph
+
+
+def placeholder_like(ph, **placeholder_kwargs):
+    """
+    Tries to create a placeholder like a given placeholder (i.e. the datatype, device and shape
+    is carried over). Can be thought of as a weaker but more robust version of `clone_placeholder`.
+    """
+    return placeholder(dtype=ph.dtype, shape=shape(ph), device=ph.device, **placeholder_kwargs)
 
 
 # ------------------- TENSOR-INFO-AND-MANIPULATION -------------------

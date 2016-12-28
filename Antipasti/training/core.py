@@ -1,5 +1,6 @@
 __author__ = "Nasim Rahaman"
 
+from warnings import warn
 from ..utilities import utils
 from .. import backend as A
 
@@ -158,6 +159,10 @@ class Loss(ModelApp):
 
     @y.setter
     def y(self, value):
+        if self.model is not None:
+            warn(self._stamp_string("Setting `y` has no effect if the model is bound."
+                                    "To unbind the model, call the `unbind_model` method first."),
+                 RuntimeWarning)
         self._y = value
 
     @property
@@ -173,6 +178,10 @@ class Loss(ModelApp):
 
     @yt.setter
     def yt(self, value):
+        if self.model is not None:
+            warn(self._stamp_string("Setting `yt` has no effect if the model is bound."
+                                    "To unbind the model, call the `unbind_model` method first."),
+                 RuntimeWarning)
         self._yt = value
 
     def assert_y_and_yt_shapes_are_compatible(self):
