@@ -1,5 +1,5 @@
 from inspect import getmro
-from collections import OrderedDict
+from warnings import warn
 
 from ..legacy import pykit as py
 from ..utilities import pyutils2 as py2
@@ -76,7 +76,39 @@ class LayerTrainyard(Model):
 
     @yt.setter
     def yt(self, value):
-        raise NotImplementedError(self._stamp_string("`yt` setter is not implemented yet."))
+        y_to_yt_dict = py2.get_from_antipasti_collection(self, 'y_to_yt', {})
+        _ys = py.obj2list(self.y)
+        # Validate value type
+        if isinstance(value, dict):
+            # A polite warning if value keys are totally off
+            if set(value.keys()) - set(_ys) == set([]):
+                warn(self._stamp_string("Trying to set `yt` with a dict, but none of the keys in "
+                                        "the given dict are in the list of prediction variables. "
+                                        "Consequently, this assignment will have no effect."),
+                     RuntimeWarning)
+        elif isinstance(value, (list, tuple)):
+            if len(_ys) != len(value):
+                raise RuntimeError(self._stamp_string("Expected {} target variables "
+                                                      "(= number of prediction variables), "
+                                                      "got {} variables.".
+                                                      format(len(_ys), len(value))))
+            value = dict(zip(_ys, value))
+        else:
+            # value must be a tensor, i.e. len(_ys) == 1
+            if len(_ys) != 1:
+                raise RuntimeError(self._stamp_string("Expected {} target variables, got 1.".
+                                                      format(len(_ys))))
+            value = {_ys[0]: value}
+        # So now that value is a dict, update the y_to_yt_dict as required
+        for _y in value.keys():
+            # Add to y_to_yt_mapping only if _y is a prediction variable
+            if _y in _ys:
+                y_to_yt_dict.update({_y: value[_y]})
+
+        # Maintain dict
+        utils.maintain_y_to_yt_dict(y_to_yt_dict, _ys)
+        # Write to collection, and done.
+        py2.add_to_antipasti_collection(self, y_to_yt_dict=y_to_yt_dict)
 
     @property
     def trainyard(self):
