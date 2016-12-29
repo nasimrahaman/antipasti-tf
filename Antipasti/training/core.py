@@ -2,6 +2,7 @@ __author__ = "Nasim Rahaman"
 
 from warnings import warn
 from ..utilities import utils
+from ..utilities import pyutils2 as py2
 from ..legacy import pykit as py
 from .. import backend as A
 
@@ -58,11 +59,36 @@ class ModelApp(object):
                                                   "Allowed keywords are: {}.".
                                                   format(key, self._ALLOWED_KWARGS)))
 
+    def _reset_attributes(self, reset_what, name_attribute_map):
+        # Given a name_attribute_map and a iterable of whats,
+        # this function does the resetting.
+        for what in reset_what:
+            assert what in name_attribute_map.keys(), \
+                self._stamp_string("Unexpected reset key: '{}'. Allowed keys are: {}.".
+                                   format(what, name_attribute_map.keys()))
+        if not reset_what:
+            # Get rid of every attribute
+            reset_what = name_attribute_map.keys()
+
+        for what in reset_what:
+            name_attribute_map[what] = None
+
+    @property
+    def model_is_bound(self):
+        return hasattr(self, 'model') and getattr(self, 'model') is not None
+
     def unbind_model(self):
         """Gets rid of the bound model instance."""
         if hasattr(self, 'model'):
             # noinspection PyAttributeOutsideInit
             self.model = None
+
+    def attach_to_model_without_binding(self, model):
+        raise NotImplementedError
+
+    @application
+    def apply(self, model):
+        raise NotImplementedError
 
 
 class Optimizer(ModelApp):
@@ -82,6 +108,17 @@ class Loss(ModelApp):
     _ALLOWED_KWARGS = {'aggregation_method', 'weights', 'y', 'yt', 'loss_vector', 'loss_scalar', 'method'}
 
     def __init__(self, model=None, **kwargs):
+        # Property containers
+        self._model = None
+        self._weights = None
+        self._aggregation_method = None
+        self._method = None
+        self._loss_vector = None
+        self._loss_scalar = None
+        self._y = None
+        self._yt = None
+
+        # Set model
         self.model = model
 
         # Validate kwargs
@@ -96,14 +133,15 @@ class Loss(ModelApp):
         self.loss_vector = kwargs.get('loss_vector')
         self.loss_scalar = kwargs.get('loss_scalar')
 
-        # Property containers
-        self._weights = None
-        self._aggregation_method = None
-        self._method = None
-        self._loss_vector = None
-        self._loss_scalar = None
-        self._y = None
-        self._yt = None
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        self._model = value
+        # Clear loss_vector and loss_scalar
+        self.reset('loss_vector', 'loss_scalar')
 
     @property
     def weights(self):
@@ -136,6 +174,7 @@ class Loss(ModelApp):
                                "in ['mean', 'sum']. Got {} instead.".
                                format(value))
         self._aggregation_method = value
+        self.reset('loss_scalar')
 
     @property
     def method(self):
@@ -151,6 +190,7 @@ class Loss(ModelApp):
         if value is None:
             return
         self._set_method(value)
+        self.reset('loss_vector', 'loss_scalar')
 
     def _set_method(self, method, is_keras_objective=False):
         # TODO: Fetch from registry if value is a string
@@ -173,7 +213,9 @@ class Loss(ModelApp):
             warn(self._stamp_string("Setting `y` has no effect if the model is bound."
                                     "To unbind the model, call the `unbind_model` method first."),
                  RuntimeWarning)
-        self._y = value
+        else:
+            self.reset('loss_vector', 'loss_scalar')
+            self._y = value
 
     @property
     def yt(self):
@@ -194,11 +236,10 @@ class Loss(ModelApp):
             self.model.yt = value
         else:
             # No model is provided
+            # loss_vector and loss_scalar are now to be recomputed, so we get rid of the
+            # cached tensors
+            self.reset('loss_vector', 'loss_scalar')
             self._yt = value
-        # loss_vector and loss_scalar are now to be recomputed, so we get rid of the
-        # cached tensors
-        self._loss_vector = None
-        self._loss_scalar = None
 
     def assert_y_and_yt_shapes_are_compatible(self):
         y_shape = A.shape(self.y)
@@ -241,7 +282,7 @@ class Loss(ModelApp):
                                                        format(value_ndim, value_shape))
         self._loss_vector = value
         # A new loss_scalar needs to be computed, so we get rid of the one in cache
-        self._loss_scalar = None
+        self.reset('loss_scalar')
 
     def _get_loss_vector(self):
         """Get loss as a vector, such that its length equals the number of batches."""
@@ -289,11 +330,18 @@ class Loss(ModelApp):
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         self.model = model
-        model.loss = self
+        py2.append_to_attribute(model, 'loss', self)
 
     @staticmethod
     def apply_weights(tensor, weights):
         return A.multiply(weights, tensor)
+
+    def unbind_model(self):
+        super(Loss, self).unbind_model()
+        self.reset('loss_vector', 'loss_scalar')
+
+    def attach_to_model_without_binding(self, model):
+        py2.append_to_attribute(model, 'loss', self)
 
     def reset(self, *reset_what):
         _name_attribute_map = {'y': self._y,
@@ -301,17 +349,7 @@ class Loss(ModelApp):
                                'weights': self._weights,
                                'loss_vector': self._loss_vector,
                                'loss_scalar': self._loss_scalar}
-        for what in reset_what:
-            assert what in _name_attribute_map.keys(), \
-                self._stamp_string("Unexpected reset key: '{}'. Allowed keys are: {}.".
-                                   format(what, _name_attribute_map.keys()))
-
-        if not reset_what:
-            # Get rid of every attribute
-            reset_what = _name_attribute_map.keys()
-
-        for what in reset_what:
-            _name_attribute_map[what] = None
+        self._reset_attributes(reset_what, _name_attribute_map)
 
 
 class Regularizer(ModelApp):
@@ -321,18 +359,28 @@ class Regularizer(ModelApp):
                        'aggregation_method', 'coefficient', 'regularization_scalar'}
 
     def __init__(self, model=None, **kwargs):
-        self.model = model
-
-        # Validate kwargs
-        self._validate_kwargs(**kwargs)
-
         # Containers for properties
+        self._model = None
         self._method = None
         self._parameters = None
         self._penalty_scalars = None
         self._aggregation_method = None
         self._coefficients = None
         self._regularization_scalar = None
+
+        self.model = model
+
+        # Validate kwargs
+        self._validate_kwargs(**kwargs)
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        self._model = value
+        self.reset('penalty_scalars', 'regularization_scalar')
 
     @property
     def parameters(self):
@@ -364,8 +412,7 @@ class Regularizer(ModelApp):
             value = py.obj2list(value)
             self._parameters = value
             # Penality scalars need to be recomputed
-            self._penalty_scalars = None
-            self._regularization_scalar = None
+            self.reset('penalty_scalars', 'regularization_scalar')
 
     @property
     def aggregation_method(self):
@@ -378,6 +425,7 @@ class Regularizer(ModelApp):
                                "in ['mean', 'sum']. Got {} instead.".
                                format(value))
         self._aggregation_method = value
+        self.reset('regularization_scalar')
 
     @property
     def method(self):
@@ -391,6 +439,7 @@ class Regularizer(ModelApp):
         if value is None:
             return
         self._set_method(value)
+        self.reset('penalty_scalars', 'regularization_scalar')
 
     def _set_method(self, method):
         # TODO Parse from string if required
@@ -406,6 +455,7 @@ class Regularizer(ModelApp):
     @coefficients.setter
     def coefficients(self, value):
         self._coefficients = value
+        self.reset('regularization_scalar')
 
     @property
     def penalty_scalars(self):
@@ -426,7 +476,7 @@ class Regularizer(ModelApp):
                                                   format(len(value), expected_len)))
         self._penalty_scalars = value
         # Regularization scalar needs to be recomputed, clear cache
-        self._regularization_scalar = None
+        self.reset('regularization_scalar')
 
     def _get_penalty_scalars(self):
         return [self.method(parameter) for parameter in self.parameters]
@@ -475,7 +525,17 @@ class Regularizer(ModelApp):
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         self.model = model
-        model.regularization = self
+        py2.append_to_attribute(model, 'regularization', self)
+
+    def attach_to_model_without_binding(self, model):
+        py2.append_to_attribute(model, 'regularizer', self)
+
+    def reset(self, *reset_what):
+        _name_attribute_map = {'parameters': self._parameters,
+                               'coefficients': self._coefficients,
+                               'penalty_scalars': self._penalty_scalars,
+                               'regularization_scalar': self._regularization_scalar}
+        self._reset_attributes(reset_what, _name_attribute_map)
 
 
 class Objective(ModelApp):
