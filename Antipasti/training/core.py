@@ -2,6 +2,7 @@ __author__ = "Nasim Rahaman"
 
 from warnings import warn
 from ..utilities import utils
+from ..legacy import pykit as py
 from .. import backend as A
 
 
@@ -56,6 +57,12 @@ class ModelApp(object):
                 raise KeyError(self._stamp_string("The given keyword {} is not expected. "
                                                   "Allowed keywords are: {}.".
                                                   format(key, self._ALLOWED_KWARGS)))
+
+    def unbind_model(self):
+        """Gets rid of the bound model instance."""
+        if hasattr(self, 'model'):
+            # noinspection PyAttributeOutsideInit
+            self.model = None
 
 
 class Optimizer(ModelApp):
@@ -178,11 +185,17 @@ class Loss(ModelApp):
 
     @yt.setter
     def yt(self, value):
+        # If model is bound, set model target
         if self.model is not None:
-            warn(self._stamp_string("Setting `yt` has no effect if the model is bound."
-                                    "To unbind the model, call the `unbind_model` method first."),
-                 RuntimeWarning)
-        self._yt = value
+            # We let model `yt` setter do the validation
+            self.model.yt = value
+        else:
+            # No model is provided
+            self._yt = value
+        # loss_vector and loss_scalar are now to be recomputed, so we get rid of the
+        # cached tensors
+        self._loss_vector = None
+        self._loss_scalar = None
 
     def assert_y_and_yt_shapes_are_compatible(self):
         y_shape = A.shape(self.y)
@@ -224,6 +237,8 @@ class Loss(ModelApp):
                                                        "got a {}-D tensor of shape {} instead.".
                                                        format(value_ndim, value_shape))
         self._loss_vector = value
+        # A new loss_scalar needs to be computed, so we get rid of the one in cache
+        self._loss_scalar = None
 
     def _get_loss_vector(self):
         """Get loss as a vector, such that its length equals the number of batches."""
@@ -277,16 +292,23 @@ class Loss(ModelApp):
     def apply_weights(tensor, weights):
         return A.multiply(weights, tensor)
 
-    def unbind_model(self):
-        """Gets rid of the bound model instance."""
-        self.model = None
+    def reset(self, *reset_what):
+        _name_attribute_map = {'y': self._y,
+                               'yt': self._yt,
+                               'weights': self._weights,
+                               'loss_vector': self._loss_vector,
+                               'loss_scalar': self._loss_scalar}
+        for what in reset_what:
+            assert what in _name_attribute_map.keys(), \
+                self._stamp_string("Unexpected reset key: '{}'. Allowed keys are: {}.".
+                                   format(what, _name_attribute_map.keys()))
 
-    def reset(self):
-        self._y = None
-        self._yt = None
-        self._weights = None
-        self._loss_vector = None
-        self._loss_scalar = None
+        if not reset_what:
+            # Get rid of every attribute
+            reset_what = _name_attribute_map.keys()
+
+        for what in reset_what:
+            _name_attribute_map[what] = None
 
 
 class Regularizer(ModelApp):
@@ -298,6 +320,9 @@ class Regularizer(ModelApp):
     def __init__(self, model=None, **kwargs):
         self.model = model
 
+        # Validate kwargs
+        self._validate_kwargs(**kwargs)
+
         # Containers for properties
         self._method = None
         self._parameters = None
@@ -308,11 +333,51 @@ class Regularizer(ModelApp):
 
     @property
     def parameters(self):
-        # Fetch parameters from model if one is bound
-        return NotImplemented
+        if self.model is not None:
+            # Fetch parameters from model if one is bound
+            return self.model.parameters
+        elif self._parameters is not None:
+            return self._parameters
+        else:
+            raise RuntimeError(self._stamp_string("Parameters have not been defined yet. "
+                                                  "To define `parameters`, consider assigning "
+                                                  "to Regularizer.parameters, or provide a model."))
 
     @parameters.setter
     def parameters(self, value):
+        # Ignore assignment if value is None
+        if value is None:
+            return
+        # Parameter assignment is not possible if a model is bound
+        if self.model is not None:
+            warn(self._stamp_string('Setting `parameters` has no effect if `model` is bound. '
+                                    'Consider unbinding the model first with `unbind_model` method.'),
+                 RuntimeWarning)
+        else:
+            # Convert from parameter collection if required
+            if hasattr(value, 'as_list'):
+                value = value.as_list()
+            # Make sure value is a list
+            value = py.obj2list(value)
+            self._parameters = value
+            # Penality scalars need to be recomputed
+            self._penalty_scalars = None
+            self._regularization_scalar = None
+
+    @property
+    def penalty_scalars(self):
+        return NotImplemented
+
+    @penalty_scalars.setter
+    def penalty_scalars(self, value):
+        raise NotImplementedError
+
+    @property
+    def regularization_scalar(self):
+        return NotImplemented
+
+    @regularization_scalar.setter
+    def regularization_scalar(self, value):
         raise NotImplementedError
 
     @application
