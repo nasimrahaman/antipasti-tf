@@ -73,6 +73,9 @@ class ModelApp(object):
         for what in reset_what:
             name_attribute_map[what] = None
 
+    def reset(self, *reset_what):
+        raise NotImplementedError
+
     @property
     def model_is_bound(self):
         return hasattr(self, 'model') and getattr(self, 'model') is not None
@@ -373,6 +376,14 @@ class Regularizer(ModelApp):
         # Validate kwargs
         self._validate_kwargs(**kwargs)
 
+        self.parameters = kwargs.get('parameters')
+        self.method = kwargs.get('method')
+        self.penalty_scalars = kwargs.get('penalty_scalars')
+        self.coefficients = kwargs.get('coefficients')
+        self.aggregation_method = kwargs.get('aggregation_method', default='mean')
+        self.regularization_scalar = kwargs.get('regularization_scalar')
+
+
     @property
     def model(self):
         return self._model
@@ -454,6 +465,8 @@ class Regularizer(ModelApp):
 
     @coefficients.setter
     def coefficients(self, value):
+        if value is None:
+            return
         self._coefficients = value
         self.reset('regularization_scalar')
 
@@ -467,6 +480,8 @@ class Regularizer(ModelApp):
 
     @penalty_scalars.setter
     def penalty_scalars(self, value):
+        if value is None:
+            return
         # Convert to list and validate length
         value = list(value)
         expected_len = len(self.parameters)
@@ -541,11 +556,68 @@ class Regularizer(ModelApp):
 class Objective(ModelApp):
     """Abstract class for the training objective. In general, objective = loss + regularization."""
     def __init__(self, model=None, **kwargs):
+        # Property containers
+        self._model = None
+        self._losses = None
+        self._regularizers = None
+        self._objective_scalar = None
+        self._parameters = None
+        self._gradients = None
+
         self.model = model
 
     @application
     def apply(self, model):
         return model
+
+    @property
+    def losses(self):
+        return NotImplemented
+
+    @losses.setter
+    def losses(self, value):
+        raise NotImplementedError
+
+    def add_loss(self, loss):
+        pass
+
+    @property
+    def regularizers(self):
+        return NotImplemented
+
+    @regularizers.setter
+    def regularizers(self, value):
+        raise NotImplementedError
+
+    def add_regularizer(self, regularizer):
+        pass
+
+    @property
+    def objective_scalar(self):
+        return NotImplemented
+
+    @objective_scalar.setter
+    def objective_scalar(self, value):
+        raise NotImplementedError
+
+    @property
+    def parameters(self):
+        return NotImplemented
+
+    @parameters.setter
+    def parameters(self, value):
+        raise NotImplementedError
+
+    @property
+    def gradients(self):
+        return NotImplemented
+
+    @gradients.setter
+    def gradients(self, value):
+        raise NotImplementedError
+
+    def reset(self, *reset_what):
+        raise NotImplementedError
 
 
 def apply(this, on):
