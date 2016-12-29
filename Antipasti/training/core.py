@@ -140,7 +140,10 @@ class Loss(ModelApp):
     @property
     def method(self):
         """Method. Should be a callable."""
-        return self._method
+        if self._method is not None:
+            return self._method
+        else:
+            raise RuntimeError(self._stamp_string("Loss `method` is yet to be set."))
 
     @method.setter
     def method(self, value):
@@ -328,7 +331,7 @@ class Regularizer(ModelApp):
         self._parameters = None
         self._penalty_scalars = None
         self._aggregation_method = None
-        self._coefficient = None
+        self._coefficients = None
         self._regularization_scalar = None
 
     @property
@@ -365,25 +368,114 @@ class Regularizer(ModelApp):
             self._regularization_scalar = None
 
     @property
+    def aggregation_method(self):
+        return self._aggregation_method
+
+    @aggregation_method.setter
+    def aggregation_method(self, value):
+        assert value in {'mean', 'sum'}, \
+            self._stamp_string("Aggregation method must be "
+                               "in ['mean', 'sum']. Got {} instead.".
+                               format(value))
+        self._aggregation_method = value
+
+    @property
+    def method(self):
+        if self._method is not None:
+            return self._method
+        else:
+            raise RuntimeError(self._stamp_string("Regularizer `method` is yet to be set."))
+
+    @method.setter
+    def method(self, value):
+        if value is None:
+            return
+        self._set_method(value)
+
+    def _set_method(self, method):
+        # TODO Parse from string if required
+        pass
+
+    @property
+    def coefficients(self):
+        if self._coefficients is not None:
+            return self._coefficients
+        else:
+            raise RuntimeError(self._stamp_string("Regularizer `coefficients` are yet to be set."))
+
+    @coefficients.setter
+    def coefficients(self, value):
+        self._coefficients = value
+
+    @property
     def penalty_scalars(self):
-        return NotImplemented
+        if self._penalty_scalars is not None:
+            return self._penalty_scalars
+        else:
+            self._penalty_scalars = self._get_penalty_scalars()
+            return self._penalty_scalars
 
     @penalty_scalars.setter
     def penalty_scalars(self, value):
-        raise NotImplementedError
+        # Convert to list and validate length
+        value = list(value)
+        expected_len = len(self.parameters)
+        if len(value) != expected_len:
+            raise RuntimeError(self._stamp_string("The given `penalty_scalars` is of "
+                                                  "length {}, but there are {} parameters.".
+                                                  format(len(value), expected_len)))
+        self._penalty_scalars = value
+        # Regularization scalar needs to be recomputed, clear cache
+        self._regularization_scalar = None
+
+    def _get_penalty_scalars(self):
+        return [self.method(parameter) for parameter in self.parameters]
 
     @property
     def regularization_scalar(self):
-        return NotImplemented
+        if self._regularization_scalar is not None:
+            return self._regularization_scalar
+        else:
+            self._regularization_scalar = self._get_regularization_scalar()
+            return self._regularization_scalar
 
     @regularization_scalar.setter
     def regularization_scalar(self, value):
-        raise NotImplementedError
+        # Do nothing if value is None
+        if value is None:
+            return
+        # Validate value ndim if possible
+        value_ndim = A.ndim(value)
+        if value_ndim is not None:
+            value_shape = A.shape(value)
+            assert value_ndim == 0, self._stamp_string("Expected `regularization_scalar` to be a "
+                                                       "scalar (0-D tensor), got a {}-D tensor of "
+                                                       "shape {} instead.".
+                                                       format(value_ndim, value_shape))
+        self._regularization_scalar = value
+
+    def _get_regularization_scalar(self):
+        # Get penalty scalars
+        penalty_scalars = self.penalty_scalars
+        # Get and broadcast coefficients
+        coefficients = self.coefficients
+        if isinstance(coefficients, list):
+            assert len(coefficients) == len(penalty_scalars) or len(coefficients) == 1, \
+                self._stamp_string("Regularization coefficients must either be a scalar or a "
+                                   "list of scalars of length {}. Got a list of length {} instead.".
+                                   format(len(penalty_scalars), len(coefficients)))
+        coefficients = py.broadcast(coefficients, len(self._penalty_scalars))
+        weighted_penalty_scalars = [A.multiply(coefficient, penalty_scalar)
+                                    for coefficient, penalty_scalar in zip(coefficients, penalty_scalars)]
+        # Aggregate
+        regularization_scalar = {'sum': A.add_n, 'mean': A.mean_n}[self.aggregation_method](weighted_penalty_scalars)
+        return regularization_scalar
 
     @application
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
-        return model
+        self.model = model
+        model.regularization = self
 
 
 class Objective(ModelApp):

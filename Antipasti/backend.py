@@ -711,6 +711,12 @@ def add_n(tensors, name='add_n'):
     return tf.add_n(inputs=tensors, name=name)
 
 
+def mean_n(tensors, name='mean_n'):
+    """Returns the mean of all tensors in `tensors`."""
+    num_tensors = len(tensors)
+    return multiply((1./num_tensors), add_n(tensors), name=name)
+
+
 def reduce_(tensor, mode, axis=0, keep_dims=False, name=None):
     """
     Reduce a `tensor` along a given `axis` by a given op (specified as `mode`).
