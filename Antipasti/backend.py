@@ -149,7 +149,7 @@ def get_from_collection(name, idx=None):
         return collection
     else:
         assert isinstance(idx, int), \
-            "Index `idx` must be a string, got {} instead.".format(idx.__class__.__name__)
+            "Index `idx` must be an int, got {} instead.".format(idx.__class__.__name__)
         return collection[idx]
 
 
@@ -158,9 +158,12 @@ get_collection = partial(get_from_collection, idx=None)
 
 # Collection keys
 class Collections(object):
+    # Default collections
     TRAINABLE_VARIABLES = tf.GraphKeys.TRAINABLE_VARIABLES
     WEIGHTS = tf.GraphKeys.WEIGHTS
     BIASES = tf.GraphKeys.BIASES
+    # Custom (Antipasti) collections
+    REGULARIZABLE_VARIABLES = "regularizable_variables"
 
 
 # ------------------- CONTEXT-MANAGING -------------------

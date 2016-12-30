@@ -78,7 +78,7 @@ def get_from_antipasti_collection(object_, key, default=None):
     if not hasattr(object_, '_antipasti_collection'):
         return default
     else:
-        getattr(object_, '_antipasti_collection').get(key, default=default)
+        return getattr(object_, '_antipasti_collection').get(key, default=default)
 
 
 def is_in_antipasti_collection(object_, key):
@@ -89,6 +89,11 @@ def is_in_antipasti_collection(object_, key):
 def is_antipasti_trainable(parameter):
     """Function to check if (Antipasti thinks) a parameter is trainable."""
     return get_from_antipasti_collection(parameter, 'trainable', default=True)
+
+
+def filter_antipasti_trainable(parameters):
+    """Function to weed out untrainable parameters given a list of `parameters`."""
+    return [parameter for parameter in parameters if is_antipasti_trainable(parameter)]
 
 
 def make_antipasti_trainable(parameters):
@@ -110,6 +115,11 @@ def make_antipasti_untrainable(parameters):
 def is_antipasti_regularizable(parameter):
     """Function to check if (Antipasti thinks) a parameter is regularizable."""
     return get_from_antipasti_collection(parameter, 'regularizable', default=True)
+
+
+def filter_antipasti_regularizable(parameters):
+    """Function to weed out unregularizable parameters given a list of `parameters`."""
+    return [parameter for parameter in parameters if is_antipasti_regularizable(parameter)]
 
 
 def make_antipasti_regularizable(parameters):
@@ -158,6 +168,37 @@ def split_parameter_tag(tag, check=False):
 def get_parameter_tag(layer_id, parameter_name):
     """Gets parameter tag given a layer_id and a parameter name."""
     return "[LayerID:{}][{}]".format(layer_id, parameter_name)
+
+
+# ---------------- INSTANCE-MANIPULATION-TOOLS ----------------
+
+
+def append_to_attribute(object_, attribute_name, attribute_object, delist=True):
+    """
+    If a given object has an attribute named `attribute_name`, which happens to be a list,
+    this function appends `attribute_object` to it. If the attribute is not present,
+    this function creates one. If it's present but not a list, it's made one. The `delist`
+    argument specifies if the first object appended is a list or simpy the given object
+    `attribute_object`.
+    """
+    if hasattr(object_, attribute_name):
+        # Object has the attribute
+        if isinstance(getattr(object_, attribute_name), list):
+            # Attribute is a list, so append to it directly
+            getattr(object_, attribute_name).append(attribute_object)
+        else:
+            # Attribute is not a list, it must be made one.
+            attribute_list = py.obj2list(getattr(object_, attribute_name))
+            # Append to the new attribute_list
+            attribute_list.append(attribute_object)
+            # Write attribute
+            setattr(object_, attribute_name, attribute_list)
+    else:
+        # Object does not have the attribute - set it.
+        setattr(object_, attribute_name, (attribute_object if delist else [attribute_object]))
+
+
+# ---------------- ADVANCED-DSTRUCTS ----------------
 
 
 class DictList(OrderedDict):

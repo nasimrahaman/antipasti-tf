@@ -142,9 +142,10 @@ class Loss(ModelApp):
 
     @model.setter
     def model(self, value):
-        self._model = value
-        # Clear loss_vector and loss_scalar
-        self.reset('loss_vector', 'loss_scalar')
+        if value is not self._model:
+            self._model = value
+            # Clear loss_vector and loss_scalar
+            self.reset('loss_vector', 'loss_scalar')
 
     @property
     def weights(self):
@@ -355,11 +356,31 @@ class Loss(ModelApp):
         self._reset_attributes(reset_what, _name_attribute_map)
 
 
+def get_loss(loss, _string_stamper=None):
+    """
+    Factory function for `Loss`.
+
+    :type loss: str or callable or Loss
+    :param loss: Loss (will be parsed as a `Loss` object)
+
+    :type _string_stamper: callable
+    :param _string_stamper: Function to stamp error messages with.
+
+    :rtype: Loss
+    :return: A `Loss` object.
+    """
+    # TODO
+    if not isinstance(loss, Loss):
+        raise NotImplementedError
+    return loss
+
+
 class Regularizer(ModelApp):
     """Abstract class for regularizer."""
 
     _ALLOWED_KWARGS = {'method', 'parameters', 'penalty_scalars',
-                       'aggregation_method', 'coefficient', 'regularization_scalar'}
+                       'aggregation_method', 'coefficient', 'regularization_scalar',
+                       'grant_collection_read_access', 'grant_collection_write_access'}
 
     def __init__(self, model=None, **kwargs):
         # Containers for properties
@@ -383,6 +404,8 @@ class Regularizer(ModelApp):
         self.aggregation_method = kwargs.get('aggregation_method', default='mean')
         self.regularization_scalar = kwargs.get('regularization_scalar')
 
+        self.collection_read_access_granted = kwargs.get('grant_collection_read_access', default=True)
+        self.collection_write_access_granted = kwargs.get('grant_collection_write_access', default=False)
 
     @property
     def model(self):
@@ -390,20 +413,26 @@ class Regularizer(ModelApp):
 
     @model.setter
     def model(self, value):
-        self._model = value
-        self.reset('penalty_scalars', 'regularization_scalar')
+        if value is not self._model:
+            self._model = value
+            self.reset('penalty_scalars', 'regularization_scalar')
 
     @property
     def parameters(self):
         if self.model is not None:
-            # Fetch parameters from model if one is bound
-            return self.model.parameters
+            # Fetch parameters regularizable from model if one is bound
+            return py2.filter_antipasti_regularizable(self.model.parameters)
         elif self._parameters is not None:
-            return self._parameters
+            return py2.filter_antipasti_regularizable(self._parameters)
         else:
-            raise RuntimeError(self._stamp_string("Parameters have not been defined yet. "
-                                                  "To define `parameters`, consider assigning "
-                                                  "to Regularizer.parameters, or provide a model."))
+            # Try to get from tensorflow collection
+            _regularizable_variables = A.get_from_collection(A.Collections.REGULARIZABLE_VARIABLES)
+            if _regularizable_variables and self.collection_read_access_granted:
+                return _regularizable_variables
+            else:
+                raise RuntimeError(self._stamp_string("Parameters have not been defined yet. "
+                                                      "To define `parameters`, consider assigning "
+                                                      "to Regularizer.parameters, or provide a model."))
 
     @parameters.setter
     def parameters(self, value):
@@ -421,7 +450,7 @@ class Regularizer(ModelApp):
                 value = value.as_list()
             # Make sure value is a list
             value = py.obj2list(value)
-            self._parameters = value
+            self._parameters = py2.filter_antipasti_regularizable(value)
             # Penality scalars need to be recomputed
             self.reset('penalty_scalars', 'regularization_scalar')
 
@@ -494,7 +523,9 @@ class Regularizer(ModelApp):
         self.reset('regularization_scalar')
 
     def _get_penalty_scalars(self):
-        return [self.method(parameter) for parameter in self.parameters]
+        return [self.method(parameter)
+                for parameter in self.parameters
+                if py2.is_antipasti_regularizable(parameter)]
 
     @property
     def regularization_scalar(self):
@@ -522,6 +553,7 @@ class Regularizer(ModelApp):
     def _get_regularization_scalar(self):
         # Get penalty scalars
         penalty_scalars = self.penalty_scalars
+
         # Get and broadcast coefficients
         coefficients = self.coefficients
         if isinstance(coefficients, list):
@@ -530,8 +562,15 @@ class Regularizer(ModelApp):
                                    "list of scalars of length {}. Got a list of length {} instead.".
                                    format(len(penalty_scalars), len(coefficients)))
         coefficients = py.broadcast(coefficients, len(self._penalty_scalars))
+
         weighted_penalty_scalars = [A.multiply(coefficient, penalty_scalar)
                                     for coefficient, penalty_scalar in zip(coefficients, penalty_scalars)]
+
+        # Write to collection if allowed
+        if self.collection_write_access_granted:
+            for weighted_penalty_scalar in weighted_penalty_scalars:
+                A.add_to_collection(A.Collections.REGULARIZABLE_VARIABLES, weighted_penalty_scalar)
+
         # Aggregate
         regularization_scalar = {'sum': A.add_n, 'mean': A.mean_n}[self.aggregation_method](weighted_penalty_scalars)
         return regularization_scalar
@@ -540,7 +579,7 @@ class Regularizer(ModelApp):
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         self.model = model
-        py2.append_to_attribute(model, 'regularization', self)
+        py2.append_to_attribute(model, 'regularizer', self)
 
     def attach_to_model_without_binding(self, model):
         py2.append_to_attribute(model, 'regularizer', self)
@@ -553,8 +592,33 @@ class Regularizer(ModelApp):
         self._reset_attributes(reset_what, _name_attribute_map)
 
 
+def get_regularizer(regularizer, _string_stamper=None):
+    """
+    Factory function for `Regularizer`.
+
+    :type regularizer: str or callable or Regularizer
+    :param regularizer: Regularizer (will be parsed as a `Regularizer` object).
+
+    :type _string_stamper: callable
+    :param _string_stamper: Function to stamp error messages with.
+
+    :rtype: Regularizer
+    :return: A `Regularizer` object.
+    """
+    # TODO
+    if not isinstance(regularizer, Regularizer):
+        raise NotImplementedError
+    return regularizer
+
+
 class Objective(ModelApp):
     """Abstract class for the training objective. In general, objective = loss + regularization."""
+
+    _ALLOWED_KWARGS = {'losses', 'regularizers',
+                       'objective_scalar',
+                       'parameters', 'gradients',
+                       'grant_collection_read_access'}
+
     def __init__(self, model=None, **kwargs):
         # Property containers
         self._model = None
@@ -563,34 +627,91 @@ class Objective(ModelApp):
         self._objective_scalar = None
         self._parameters = None
         self._gradients = None
+        # Validate kwargs
+        self._validate_kwargs(**kwargs)
 
         self.model = model
+
+        # Read kwargs
+        self.collection_read_access_granted = kwargs.get('grant_collection_read_access', True)
 
     @application
     def apply(self, model):
         return model
 
     @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        if value is not self._model:
+            self._model = value
+            self.reset('objective_scalar', 'gradients')
+
+    @property
     def losses(self):
-        return NotImplemented
+        if self.model is not None:
+            return py.obj2list(self.model.loss)
+        elif self._losses is not None:
+            return py.obj2list(self._losses)
+        else:
+            raise RuntimeError(self._stamp_string("Losses are yet to be defined."))
 
     @losses.setter
     def losses(self, value):
-        raise NotImplementedError
+        if self.model is not None:
+            warn(self._stamp_string("Setting losses has no effect when model is attached. "
+                                    "Consider using the `add_loss` method instead."),
+                 RuntimeWarning)
+        else:
+            # Objective scalar and gradients need to be recomputed
+            self.reset('objective_scalar', 'gradients')
+            # Parse all losses
+            self._losses = map(get_loss, py.obj2list(value))
 
     def add_loss(self, loss):
-        pass
+        # Parse loss
+        loss = get_loss(loss, _string_stamper=self._stamp_string)
+        # Append to model losses if possible; otherwise, to self._losses
+        if self.model is not None:
+            py2.append_to_attribute(self.model, 'loss', loss)
+        else:
+            self._append_to_attribute('losses', loss)
+        # Clear caches
+        self.reset('objective_scalar', 'gradients')
 
     @property
     def regularizers(self):
-        return NotImplemented
+        if self.model is not None:
+            return py.obj2list(self.model.regularizer)
+        elif self._regularizers is not None:
+            return py.obj2list(self._regularizers)
+        else:
+            raise RuntimeError(self._stamp_string("Regularizers are yet to be defined."))
 
     @regularizers.setter
     def regularizers(self, value):
-        raise NotImplementedError
+        if self.model is not None:
+            warn(self._stamp_string("Setting regularizers has no effect when model is attached. "
+                                    "Consider using the `add_regularizer` method instead."),
+                 RuntimeWarning)
+        else:
+            # Objective scalar and gradients need to be recomputed
+            self.reset('objective_scalar', 'gradients')
+            # Parse all losses
+            self._regularizers = map(get_regularizer, py.obj2list(value))
 
     def add_regularizer(self, regularizer):
-        pass
+        # Parse regularizer
+        regularizer = get_regularizer(regularizer)
+        # Append to model regs if possible; otherwise, to self._regularizers
+        if self.model is not None:
+            py2.append_to_attribute(self.model, 'regularizer', regularizer)
+        else:
+            self._append_to_attribute('regularizers', regularizer)
+        # Clear cahces
+        self.reset('objective_scalar', 'gradients')
 
     @property
     def objective_scalar(self):
@@ -600,13 +721,32 @@ class Objective(ModelApp):
     def objective_scalar(self, value):
         raise NotImplementedError
 
+    def _get_objective_scalar(self):
+        return NotImplemented
+
     @property
     def parameters(self):
-        return NotImplemented
+        if self.model is not None:
+            return py2.filter_antipasti_trainable(self.model.parameters)
+        elif self._parameters is not None:
+            return py2.filter_antipasti_trainable(self._parameters)
+        else:
+            # Try to get from tensorflow collection
+            _trainable_variables = A.get_from_collection(A.Collections.TRAINABLE_VARIABLES)
+            if _trainable_variables and self.collection_read_access_granted:
+                return _trainable_variables
+            else:
+                raise RuntimeError(self._stamp_string("Parameters are yet to be defined."))
 
     @parameters.setter
     def parameters(self, value):
-        raise NotImplementedError
+        if self.model is not None:
+            warn(self._stamp_string("Setting parameters has no effect when model is attached."),
+                 RuntimeWarning)
+        else:
+            self._parameters = py2.filter_antipasti_trainable(py.obj2list(value))
+            # gradients need to be recomputed
+            self.reset('gradients')
 
     @property
     def gradients(self):
@@ -616,8 +756,28 @@ class Objective(ModelApp):
     def gradients(self, value):
         raise NotImplementedError
 
+    def _append_to_attribute(self, attribute_name, object_):
+        _allowed_attributes = {'losses', 'regularizers'}
+        if attribute_name in _allowed_attributes:
+            private_attr_name = "_{}".format(attribute_name)
+            attribute = getattr(object_, private_attr_name)
+            if attribute is None:
+                attribute = []
+            assert isinstance(attribute, list)
+            attribute.append(object_)
+            setattr(self, private_attr_name, attribute)
+        else:
+            raise RuntimeError(self._stamp_string("Can't append to attribute_name: '{}'. "
+                                                  "Can only append to {}.".
+                                                  format(attribute_name, _allowed_attributes)))
+
     def reset(self, *reset_what):
-        raise NotImplementedError
+        _name_attribute_map = {'losses': self._losses,
+                               'regularizers': self._regularizers,
+                               'objective_scalar': self._objective_scalar,
+                               'parameters': self._parameters,
+                               'gradients': self._gradients}
+        self._reset_attributes(reset_what, _name_attribute_map)
 
 
 def apply(this, on):
