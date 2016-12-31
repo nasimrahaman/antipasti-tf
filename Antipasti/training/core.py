@@ -617,7 +617,8 @@ class Objective(ModelApp):
     _ALLOWED_KWARGS = {'losses', 'regularizers',
                        'objective_scalar',
                        'parameters', 'gradients',
-                       'grant_collection_read_access'}
+                       'grant_collection_read_access',
+                       'optimizer'}
 
     def __init__(self, model=None, **kwargs):
         # Property containers
@@ -627,6 +628,8 @@ class Objective(ModelApp):
         self._objective_scalar = None
         self._parameters = None
         self._gradients = None
+        self._optimizer = None
+
         # Validate kwargs
         self._validate_kwargs(**kwargs)
 
@@ -715,26 +718,46 @@ class Objective(ModelApp):
 
     @property
     def objective_scalar(self):
-        return NotImplemented
+        if self._objective_scalar is not None:
+            return self._objective_scalar
+        else:
+            self._objective_scalar = self._get_objective_scalar()
+            return self._objective_scalar
 
     @objective_scalar.setter
     def objective_scalar(self, value):
-        raise NotImplementedError
+        if value is None:
+            return
+        # Check if objective scalar
+        if A.is_tf_tensor(value) and not A.check_dimensionality(value, 0):
+            raise ValueError(self._stamp_string("`objective_scalar` must be a scalar, "
+                                                "i.e. a 0-D tensor. Got a {}-D tensor instead.".
+                                                format(A.ndim(value))))
+        self._objective_scalar = value
+        self.reset('gradients')
 
     def _get_objective_scalar(self):
-        return NotImplemented
+        _losses = self.losses
+        _regularizers = self.regularizers
+        # Get loss and reg scalars
+        _loss_scalars = [loss.loss_scalar for loss in _losses]
+        _regularization_scalars = [regularizer.regularization_scalar
+                                   for regularizer in _regularizers]
+        # Add 'em up
+        _objective_scalar = A.add_n(_loss_scalars + _regularization_scalars)
+        return _objective_scalar
 
     @property
     def parameters(self):
         if self.model is not None:
-            return py2.filter_antipasti_trainable(self.model.parameters)
+            return py2.filter_antipasti_trainable(py.obj2list(self.model.parameters))
         elif self._parameters is not None:
-            return py2.filter_antipasti_trainable(self._parameters)
+            return py2.filter_antipasti_trainable(py.obj2list(self._parameters))
         else:
             # Try to get from tensorflow collection
             _trainable_variables = A.get_from_collection(A.Collections.TRAINABLE_VARIABLES)
             if _trainable_variables and self.collection_read_access_granted:
-                return _trainable_variables
+                return py.obj2list(_trainable_variables)
             else:
                 raise RuntimeError(self._stamp_string("Parameters are yet to be defined."))
 
@@ -749,12 +772,46 @@ class Objective(ModelApp):
             self.reset('gradients')
 
     @property
+    def optimizer(self):
+        return self._optimizer
+
+    @optimizer.setter
+    def optimizer(self, value):
+        self._optimizer = value
+        self.reset('gradients')
+
+    @property
     def gradients(self):
-        return NotImplemented
+        if self._gradients is not None:
+            return self._gradients
+        else:
+            self._gradients = self._get_gradients()
+            return self._gradients
 
     @gradients.setter
     def gradients(self, value):
-        raise NotImplementedError
+        if value is None:
+            return
+        _parameters = self.parameters
+        # Convert value to a list and validate
+        value = py.obj2list(value)
+        assert len(value) == len(_parameters), \
+            self._stamp_string("The number of gradient tensors must equal the number of trainable parameters. "
+                               "Given `gradients` is a list of {} objects, but there are {} trainable parameters."
+                               .format(len(value), len(_parameters)))
+        assert all([A.is_tf_tensor(val) for val in value]), \
+            self._stamp_string("Provided `gradients` must be a list of tensorflow tensors.")
+
+        # Set attribute. Nothing to reset.
+        self._gradients = value
+
+    def _get_gradients(self):
+        # Get objective and parameters
+        _objective_scalar = self.objective_scalar
+        _parameters = self.parameters
+        _gradients = A.gradients(_objective_scalar, with_respect_to=_parameters,
+                                 optimizer=self.optimizer)
+        return _gradients
 
     def _append_to_attribute(self, attribute_name, object_):
         _allowed_attributes = {'losses', 'regularizers'}

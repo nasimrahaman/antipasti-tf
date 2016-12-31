@@ -656,6 +656,15 @@ def tf_shape_is_defined(tensor):
     return shape(tensor) is not None
 
 
+def check_dimensionality(tensor, dimensionality):
+    """Checks if a given `tensor` is `dimensionality`-dimensional."""
+    return is_tf_tensor(tensor) and ndim(tensor) == dimensionality
+
+
+def is_tf_tensor(value):
+    return isinstance(value, tf.Tensor)
+
+
 def concatenate(tensors, axis=0, name='concat'):
     """
     Concatenates multiple tensors along a given axis.
@@ -756,6 +765,49 @@ def reduce_(tensor, mode, axis=0, keep_dims=False, name=None):
 def multiply(*tensors, **kwargs):
     op_name = kwargs.get('name', 'mul')
     return reduce(lambda x, y: tf.mul(x, y, name=op_name), tensors)
+
+
+# ------------------- AUTO-DIFFERENTIATION -------------------
+
+
+def gradients(objective, with_respect_to=None, optimizer=None, name='get_gradients',
+              **gradients_kwargs):
+    """
+    Compute symbolic gradients of an `objective` with respect to a given list
+    of variables: `with_respect_to`. If the latter is not provided, the gradients
+    are computed with respect to the variables in `GraphKeys.TRAINABLE_VARIABLES`.
+
+    :type objective: tensorflow.Tensor or list
+    :param objective: Training objective (or a list of objectives).
+
+    :type with_respect_to: tensorflow.Tensor or list
+    :param with_respect_to: Take gradients with respect to these variables.
+
+    :type optimizer: any
+    :param optimizer: Optimizer, if available.
+
+    :type name: str
+    :param name: Name of the gradient computation op.
+
+    :type gradients_kwargs: dict
+    :param gradients_kwargs: Extra arguments to the tensorflow gradient computation
+                             function (`tensorflow.gradients`)
+
+    :rtype: tensorflow.Tensor or list
+    :return: List of gradients (in the case `with_respect_to` is a list) or the
+             gradient tensor (for when `with_respect_to` is a tensor).
+    """
+    # Get gradient computation function
+    if optimizer is None:
+        gradient_function = lambda objective_, wrt: tf.gradients(ys=objective_, xs=py.obj2list(wrt),
+                                                                 name=name, **gradients_kwargs)
+    else:
+        gradient_function = lambda objective_, wrt: optimizer.compute_gradients(loss=add_n(py.obj2list(objective_)),
+                                                                                var_list=py.obj2list(wrt),
+                                                                                **gradients_kwargs)
+    # Compute gradients, delist and return
+    grads = gradient_function(objective, with_respect_to)
+    return py.delist(grads)
 
 
 # ------------------- NEURAL-NET-HELPERS -------------------
