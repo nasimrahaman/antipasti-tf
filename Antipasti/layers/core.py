@@ -328,6 +328,9 @@ class Layer(object):
         # Add to GraphKeys.TRAINABLE_VARIABLES if trainable
         if utils.is_antipasti_trainable(variable):
             A.add_to_collection(A.Collections.TRAINABLE_VARIABLES, variable)
+        # Add to Collections.REGULARIZABLE_VARIABLES if regularizable
+        if utils.is_antipasti_regularizable(variable):
+            A.add_to_collection(A.Collections.REGULARIZABLE_VARIABLES, variable)
         # Add to GraphKeys.WEIGHTS if parameter is being registered as weight
         if as_weight:
             A.add_to_collection(A.Collections.WEIGHTS, variable)

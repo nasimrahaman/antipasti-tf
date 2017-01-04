@@ -49,6 +49,8 @@ def obj2list(obj, ndarray2list=True):
     # Try-except clause may not work here because layertrain is an iterator and can be converted to list
     if isinstance(obj, listlike):
         return list(obj)
+    elif hasattr(obj, 'as_list'):
+        return obj.as_list()
     else:
         return [obj]
 

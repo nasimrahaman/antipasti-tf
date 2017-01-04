@@ -94,17 +94,6 @@ class ModelApp(object):
         raise NotImplementedError
 
 
-class Optimizer(ModelApp):
-    """Abstract class for an optimizer."""
-    def __init__(self, model=None, **kwargs):
-        self.model = model
-
-    @application
-    def apply(self, model=None):
-        """Get the training op and write as model attribute."""
-        return model
-
-
 class Loss(ModelApp):
     """Abstract class for a loss function (not neccesarily an objective)."""
 
@@ -637,6 +626,10 @@ class Objective(ModelApp):
 
         # Read kwargs
         self.collection_read_access_granted = kwargs.get('grant_collection_read_access', True)
+        self.losses = kwargs.get('losses')
+        self.regularizers = kwargs.get('regularizers')
+        self.objective_scalar = kwargs.get('objective_scalar')
+        self.parameters = kwargs.get('parameters')
 
     @application
     def apply(self, model):
@@ -663,6 +656,8 @@ class Objective(ModelApp):
 
     @losses.setter
     def losses(self, value):
+        if value is None:
+            return
         if self.model is not None:
             warn(self._stamp_string("Setting losses has no effect when model is attached. "
                                     "Consider using the `add_loss` method instead."),
@@ -695,6 +690,8 @@ class Objective(ModelApp):
 
     @regularizers.setter
     def regularizers(self, value):
+        if value is None:
+            return
         if self.model is not None:
             warn(self._stamp_string("Setting regularizers has no effect when model is attached. "
                                     "Consider using the `add_regularizer` method instead."),
@@ -763,6 +760,8 @@ class Objective(ModelApp):
 
     @parameters.setter
     def parameters(self, value):
+        if value is None:
+            return 
         if self.model is not None:
             warn(self._stamp_string("Setting parameters has no effect when model is attached."),
                  RuntimeWarning)
@@ -835,6 +834,17 @@ class Objective(ModelApp):
                                'parameters': self._parameters,
                                'gradients': self._gradients}
         self._reset_attributes(reset_what, _name_attribute_map)
+
+
+class Optimizer(ModelApp):
+    """Abstract class for an optimizer."""
+    def __init__(self, model=None, **kwargs):
+        self.model = model
+
+    @application
+    def apply(self, model=None):
+        """Get the training op and write as model attribute."""
+        return model
 
 
 def apply(this, on):
