@@ -833,7 +833,7 @@ def image_tensor_to_matrix(tensor):
     return flat_matrix
 
 
-def binary_cross_entropy(prediction, target, with_logits=True, aggregate=True,
+def binary_cross_entropy(prediction, target, weights=None, with_logits=True, aggregate=True,
                          aggregation_mode='mean'):
     """
     Computes the binary cross entropy given `prediction` and `target` tensors,
@@ -851,6 +851,10 @@ def binary_cross_entropy(prediction, target, with_logits=True, aggregate=True,
     :type target: tensorflow.Tensor
     :param target: Target tensor.
 
+    :type weights: tensorflow.Tensor
+    :param weights: Pixel-wise weight tensor. Should have the same shape as `prediction`
+                    or `target`.
+
     :type with_logits: bool
     :param with_logits: Whether `prediction` is a tensor of logits.
 
@@ -867,11 +871,16 @@ def binary_cross_entropy(prediction, target, with_logits=True, aggregate=True,
     # Flatten to matrix
     prediction_flattened = image_tensor_to_matrix(prediction)
     target_flattened = image_tensor_to_matrix(target)
+    weights_flattened = image_tensor_to_matrix(weights) if weights is not None else None
     # Compute loss
     if with_logits:
         # Remember that binary cross entropy is elementwise (unlike softmax cross entropy)
         bce_matrix = tf.nn.sigmoid_cross_entropy_with_logits(logits=prediction_flattened,
                                                              targets=target_flattened, name='bce')
+        # Weight bce_matrix. Since tf.mul supports broadcasting, `weights` may or may not be
+        # multi-channel. ;-)
+        if weights_flattened is not None:
+            bce_matrix = multiply(weights_flattened, bce_matrix, name='bce_weighting')
         # Sum along the channel axis
         bce_vector = reduce_(bce_matrix, 'sum', axis=1)
         # Aggregate if required
