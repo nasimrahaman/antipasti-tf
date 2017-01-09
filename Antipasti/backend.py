@@ -817,6 +817,8 @@ def image_tensor_to_matrix(tensor):
     """
     Convert an image tensor (as BHWC or BDHWC) to a matrix of shape (B * H * W, C).
     Adds the known original shape as a field in antipasti collection.
+    Note that this function works as expected (though not without added redundancy) even when
+    `tensor` is a matrix already.
     """
     # Log original shape
     shape_before_flattening = shape(tensor, symbolic=False)
@@ -831,7 +833,8 @@ def image_tensor_to_matrix(tensor):
     return flat_matrix
 
 
-def binary_cross_entropy(prediction, target, with_logits=True):
+def binary_cross_entropy(prediction, target, with_logits=True, aggregate=True,
+                         aggregation_mode='mean'):
     """
     Computes the binary cross entropy given `prediction` and `target` tensors,
     where `prediction` must be the output of a linear layer when `with_logits`
@@ -851,7 +854,32 @@ def binary_cross_entropy(prediction, target, with_logits=True):
     :type with_logits: bool
     :param with_logits: Whether `prediction` is a tensor of logits.
 
+    :type aggregate: bool
+    :param aggregate: Whether to aggregate the loss (which is initially a vector of shape
+                      (batchsize,)) to a scalar.
+
+
+    :type aggregation_mode: str
+    :param aggregation_mode: If `aggregate`, the aggregation (reduction) mode to be used.
+
     :return: Binary cross entropy vector
     """
-    # TODO
-    pass
+    # Flatten to matrix
+    prediction_flattened = image_tensor_to_matrix(prediction)
+    target_flattened = image_tensor_to_matrix(target)
+    # Compute loss
+    if with_logits:
+        # Remember that binary cross entropy is elementwise (unlike softmax cross entropy)
+        bce_tensor = tf.nn.sigmoid_cross_entropy_with_logits(logits=prediction_flattened,
+                                                             targets=target_flattened, name='bce')
+        # Sum along the channel axis
+        bce_vector = reduce_(bce_tensor, 'sum', axis=1)
+        # Aggregate if required
+        if aggregate:
+            bce = reduce_(bce_vector, aggregation_mode, axis=0)
+        else:
+            bce = bce_vector
+    else:
+        raise NotImplementedError("Binary cross entropy without logits is yet to be implemented.")
+    # Done.
+    return bce
