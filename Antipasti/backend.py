@@ -870,10 +870,10 @@ def binary_cross_entropy(prediction, target, with_logits=True, aggregate=True,
     # Compute loss
     if with_logits:
         # Remember that binary cross entropy is elementwise (unlike softmax cross entropy)
-        bce_tensor = tf.nn.sigmoid_cross_entropy_with_logits(logits=prediction_flattened,
+        bce_matrix = tf.nn.sigmoid_cross_entropy_with_logits(logits=prediction_flattened,
                                                              targets=target_flattened, name='bce')
         # Sum along the channel axis
-        bce_vector = reduce_(bce_tensor, 'sum', axis=1)
+        bce_vector = reduce_(bce_matrix, 'sum', axis=1)
         # Aggregate if required
         if aggregate:
             bce = reduce_(bce_vector, aggregation_mode, axis=0)
