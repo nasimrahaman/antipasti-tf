@@ -830,3 +830,28 @@ def image_tensor_to_matrix(tensor):
     # Done.
     return flat_matrix
 
+
+def binary_cross_entropy(prediction, target, with_logits=True):
+    """
+    Computes the binary cross entropy given `prediction` and `target` tensors,
+    where `prediction` must be the output of a linear layer when `with_logits`
+    is set to true (default). If `with_logits` is set to False, prediction is assumed
+    to be between 0 and 1 (i.e. the output of a sigmoid layer).
+
+    If `prediction` and `target` are 4 or 5 dimensional image tensors, they're
+    converted to matrices with `Antipasti.backend.image_tensor_to_matrix` function.
+
+    :type prediction: tensorflow.Tensor
+    :param prediction: Prediction tensor. Values in it must remain between 0 and 1
+                       if `with_logits` is set to `False`.
+
+    :type target: tensorflow.Tensor
+    :param target: Target tensor.
+
+    :type with_logits: bool
+    :param with_logits: Whether `prediction` is a tensor of logits.
+
+    :return: Binary cross entropy vector
+    """
+    # TODO
+    pass
