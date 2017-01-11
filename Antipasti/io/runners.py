@@ -178,6 +178,9 @@ class FeederRunner(object):
                 # Restart feeder for the next epoch (if possible, break otherwise)
                 if hasattr(self.feeder, 'restart_generator'):
                     self.feeder.restart_generator()
+                elif hasattr(self.feeder, 'restartgenerator'):
+                    # Legacy support
+                    self.feeder.restartgenerator()
                 else:
                     break
 
