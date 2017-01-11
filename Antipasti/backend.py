@@ -38,9 +38,7 @@ def getfw():
 
 # List of all datatypes
 _DATATYPES = ['float16', 'float32', 'float64',
-              'int16', 'int32', 'int64', 'uint8', 'uint16',
-              'float16_ref', 'float32_ref', 'float64_ref',
-              'int16_ref', 'int32_ref', 'int64_ref', 'uint8_ref', 'uint16_ref']
+              'int16', 'int32', 'int64', 'uint8', 'uint16']
 
 # Default float
 _FLOATX = 'float32'
@@ -729,7 +727,7 @@ def mean_n(tensors, name='mean_n'):
     return multiply((1./num_tensors), add_n(tensors), name=name)
 
 
-def reduce_(tensor, mode, axis=0, keep_dims=False, name=None):
+def reduce_(tensor, mode, axis=None, keep_dims=False, name=None):
     """
     Reduce a `tensor` along a given `axis` by a given op (specified as `mode`).
 
