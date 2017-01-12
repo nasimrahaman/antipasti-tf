@@ -162,13 +162,15 @@ class FeederRunner(object):
                         # Release lock
                         self.feeder_lock.release()
 
-                    # Validate data_batch
-                    assert len(data_batch) == self.num_inputs, \
-                        "Data batch as yielded by the feeder has {} tensors, " \
-                        "but this FeederRunner instance expects {}.".format(len(data_batch), self.num_inputs)
-
                     # Preprocess data_batch
                     prepped_data_batch = self.preprocessor(data_batch)
+
+                    # Validate data_batch
+                    assert len(prepped_data_batch) == self.num_inputs, \
+                        "Data batch as yielded by the feeder (after preprocessing) has {} tensors, " \
+                        "but this FeederRunner instance expects {}.".format(len(prepped_data_batch),
+                                                                            self.num_inputs)
+
                     # Get feed dict
                     feed_dict = {_placeholder: _data_tensor
                                  for _placeholder, _data_tensor in zip(self._data_placeholders, prepped_data_batch)}
