@@ -28,9 +28,13 @@ def get(attr):
     return getattr(tf, attr)
 
 
-def getfw():
-    """Get framework."""
-    return tf
+def getfw(submodule=None):
+    """Get framework or a submodule in the framework."""
+    if submodule is None:
+        return tf
+    else:
+        assert isinstance(submodule, str), "Submodule name must be a string."
+        return getattr(tf, submodule)
 
 
 # ------------------- TENSORFLOW-SPECIFIC -------------------
@@ -132,6 +136,14 @@ def initialize_all_uninitialized_variables(run_init_op=True, session=None):
         session.run(init_op)
     # Return init_op for the record
     return init_op
+
+
+def get_all_global_variables(as_name_variable_dict=False):
+    """Fetches all global variables with `tensorflow.global_variables`."""
+    if not as_name_variable_dict:
+        return tf.global_variables()
+    else:
+        return {var.name: var for var in tf.global_variables()}
 
 
 # ------------------- COLLECTION-UTILITIES -------------------
