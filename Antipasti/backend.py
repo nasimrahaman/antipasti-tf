@@ -42,7 +42,8 @@ def getfw(submodule=None):
 
 # List of all datatypes
 _DATATYPES = ['float16', 'float32', 'float64',
-              'int16', 'int32', 'int64', 'uint8', 'uint16']
+              'int16', 'int32', 'int64', 'uint8', 'uint16',
+              'bool']
 
 # Default float
 _FLOATX = 'float32'
@@ -475,6 +476,10 @@ def to_tf_tensor(value, dtype=_FLOATX, name=None):
     return tf.convert_to_tensor(value, dtype=dtype, name=name)
 
 
+def cast(tensor, dtype, name=None):
+    return tf.cast(tensor, to_tf_dtype(dtype))
+
+
 # ------------------- VARIABLES-AND-TENSORS -------------------
 
 
@@ -710,7 +715,7 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
-def expand_dims(tensor, dim, name='expand_dims'):
+def expand_dims(tensor, dim, name=None):
     """Alias for tensorflow.expand_dims."""
     return tf.expand_dims(tensor, dim, name=name)
 
@@ -720,7 +725,7 @@ def transpose(tensor, perm=None, name='transpose'):
     return tf.transpose(tensor, perm=perm, name=name)
 
 
-def reshape(tensor, shape, name='reshape'):
+def reshape(tensor, shape, name=None):
     """Alias for tensorflow.reshape."""
     return tf.reshape(tensor, shape=shape, name=name)
 
@@ -728,12 +733,12 @@ def reshape(tensor, shape, name='reshape'):
 # ------------------- TENSOR-ARITHMETIC -------------------
 
 
-def add_n(tensors, name='add_n'):
+def add_n(tensors, name=None):
     """Alias for tensorflow.add_n."""
     return tf.add_n(inputs=tensors, name=name)
 
 
-def mean_n(tensors, name='mean_n'):
+def mean_n(tensors, name=None):
     """Returns the mean of all tensors in `tensors`."""
     num_tensors = len(tensors)
     return multiply((1./num_tensors), add_n(tensors), name=name)
@@ -773,14 +778,44 @@ def reduce_(tensor, mode, axis=None, keep_dims=False, name=None):
 
 
 def multiply(*tensors, **kwargs):
-    op_name = kwargs.get('name', 'mul')
+    op_name = kwargs.get('name')
     return reduce(lambda x, y: tf.mul(x, y, name=op_name), tensors)
+
+
+def equal(tensor1, tensor2, as_dtype=None, name=None):
+    """
+    Equivalent to `tensorflow.equal` when `as_dtype` is None; otherwise, the output from
+    `tensorflow.equal` is cast to `as_dtype` (which can be a string or a `tensorflow.Dtype`).
+    """
+    comparison = tf.equal(tensor1, tensor2, name=name)
+    if as_dtype is None:
+        return comparison
+    else:
+        return cast(comparison, as_dtype,
+                    name=(None if name is None else '{}_cast'.format(name)))
+
+
+def greater(tensor1, tensor2, as_dtype=None, name=None):
+    """
+    Equivalent to `tensorflow.greater` when `as_dtype` is None; otherwise, the output from
+    `tensorflow.greater` is cast to `as_dtype` (which can be a string or a `tensorflow.Dtype`).
+    """
+    comparison = tf.greater(tensor1, tensor2, name=name)
+    if as_dtype is None:
+        return comparison
+    else:
+        return cast(comparison, as_dtype,
+                    name=(None if name is None else '{}_cast'.format(name)))
+
+
+def threshold_tensor(tensor, threshold, as_dtype=_FLOATX, name='threshold'):
+    return greater(tensor, threshold, as_dtype=as_dtype, name=name)
 
 
 # ------------------- AUTO-DIFFERENTIATION -------------------
 
 
-def gradients(objective, with_respect_to=None, optimizer=None, name='get_gradients',
+def gradients(objective, with_respect_to=None, optimizer=None, name='gradients',
               **gradients_kwargs):
     """
     Compute symbolic gradients of an `objective` with respect to a given list
@@ -823,6 +858,11 @@ def gradients(objective, with_respect_to=None, optimizer=None, name='get_gradien
 # ------------------- NEURAL-NET-HELPERS -------------------
 
 
+def sigmoid(tensor):
+    """Computes elementwise sigmoid on the input `tensor`."""
+    return tf.nn.sigmoid(tensor)
+
+
 def image_tensor_to_matrix(tensor):
     """
     Convert an image tensor (as BHWC or BDHWC) to a matrix of shape (B * H * W, C).
@@ -841,6 +881,9 @@ def image_tensor_to_matrix(tensor):
     py2.add_to_antipasti_collection(flat_matrix, shape_before_flattening=shape_before_flattening)
     # Done.
     return flat_matrix
+
+
+# ------------------- LOSSES-AND-METRICS -------------------
 
 
 def binary_cross_entropy(prediction, target, weights=None, with_logits=True, aggregate=True,
@@ -902,3 +945,36 @@ def binary_cross_entropy(prediction, target, weights=None, with_logits=True, agg
         raise NotImplementedError("Binary cross entropy without logits is yet to be implemented.")
     # Done.
     return bce
+
+
+def binary_accuracy(prediction, target, prediction_threshold=0.5, target_threshold=0.5):
+    """
+    Computes the binary accuracy of the `prediction` with respect to the given `target`.
+    The `prediction` and `target` are thresholded at `prediction_threshold` and `target_threshold`
+    respectively.
+
+    :type prediction: tensorflow.Tensor
+    :param prediction: Prediction tensor.
+
+    :type target: tensorflow.Tensor
+    :param target: Target tensor.
+
+    :type prediction_threshold: float or tensorflow.Tensor
+    :param prediction_threshold: Threshold for prediction.
+
+    :type target_threshold: float or tensorflow.Tensor
+    :param target_threshold: Threshold for target.
+
+    :return: Binary accuracy scalar.
+    """
+    # Threshold prediction and target
+    thresholded_prediction = threshold_tensor(prediction, prediction_threshold,
+                                              name='prediction_threshold')
+    thresholded_target = threshold_tensor(target, target_threshold,
+                                          name='target_threshold')
+    # Compare prediction and target and reduce_mean
+    _binary_accuracy = reduce_(equal(thresholded_prediction, thresholded_target, as_dtype=_FLOATX,
+                                     name='bin_accuracy_comparison'),
+                               mode='mean', name='bin_accuracy_reduction')
+    # Return binary accuracy scalar
+    return _binary_accuracy
