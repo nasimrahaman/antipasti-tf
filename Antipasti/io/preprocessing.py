@@ -64,7 +64,7 @@ def as_function_over_axes(axes):
 
             # Start main loop
             for _slice in slices_to_loop_over:
-                # Slice the extra batches
+                # Slice all batches
                 sliced_batches_in = [batch_in[_slice] for batch_in in batches_in]
                 # Get output and convert it to a list in case it isn't one already
                 all_outputs = py.obj2list(function(py.delist(sliced_batches_in)),
