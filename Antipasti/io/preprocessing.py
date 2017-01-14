@@ -38,17 +38,19 @@ def as_function_over_axes(axes):
     """
 
     def decorator(function):
-        def _new_function(batch_in, *extra_batches_in):
+        def _new_function(batches_in):
+            batches_in = py.obj2list(batches_in, ndarray2list=False)
             # Validate
-            assert isinstance(batch_in, np.ndarray), \
-                "Input batch must be a numpy ndarray, " \
-                "got {} instead.".format(batch_in.__class__.__name__)
-            assert all([extra_batch_in.shape == batch_in.shape
-                        for extra_batch_in in extra_batches_in]), \
-                "All input batches must have the same shape."
+            for batch_in in batches_in:
+                assert isinstance(batch_in, np.ndarray), \
+                    "Input batch must be a numpy ndarray, " \
+                    "got {} instead.".format(batch_in.__class__.__name__)
+                assert batch_in.shape == batches_in[0].shape, \
+                    "All input batches must have the same shape. " \
+                    "Shape {} is incompatible with {}.".format(batch_in.shape, batches_in[0].shape)
 
             # Take measurements
-            batch_shape = batch_in.shape
+            batch_shape = batches_in[0].shape
             batch_ndim = len(batch_shape)
 
             # Generate a iterable of slices to loop over.
@@ -58,20 +60,19 @@ def as_function_over_axes(axes):
                                             for dim_num in range(batch_ndim)])
 
             # Preallocate output(s)
-            batch_out = np.zeros_like(batch_in)
-            extra_batches_out = [np.zeros_like(_batch_in) for _batch_in in extra_batches_in]
-            all_batches_out = [batch_out] + extra_batches_out
+            batches_out = [np.zeros_like(batch_in) for batch_in in batches_in]
 
             # Start main loop
             for _slice in slices_to_loop_over:
                 # Slice the extra batches
-                sliced_extra_batches_in = [_batch_in[_slice] for _batch_in in extra_batches_in]
+                sliced_batches_in = [batch_in[_slice] for batch_in in batches_in]
                 # Get output and convert it to a list in case it isn't one already
-                all_outputs = py.obj2list(function(batch_in[_slice], *sliced_extra_batches_in))
-                for given_batch_out, given_output in zip(all_batches_out, all_outputs):
+                all_outputs = py.obj2list(function(py.delist(sliced_batches_in)),
+                                          ndarray2list=False)
+                for given_batch_out, given_output in zip(batches_out, all_outputs):
                     given_batch_out[_slice] = given_output
             # Delist and return
-            return py.delist(all_batches_out)
+            return py.delist(batches_out)
         return _new_function
     return decorator
 
