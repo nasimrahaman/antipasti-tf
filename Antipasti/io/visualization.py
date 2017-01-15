@@ -1,6 +1,6 @@
 __author__ = "Nasim Rahaman"
 
-from scipy.misc import imsave, toimage
+from scipy.misc import toimage
 import os
 
 
