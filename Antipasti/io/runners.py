@@ -19,6 +19,7 @@ class FeederRunner(object):
         self._dtypes = None
         self._preprocessor = None
         self._queue = None
+        self._queue_size_op = None
         self._enq_op = None
         self._data_placeholders = None
         self._coordinator = None
@@ -115,6 +116,11 @@ class FeederRunner(object):
     def thread_list(self):
         return list(self.coordinator._registered_threads)
 
+    @property
+    def queue_is_made(self):
+        """Checks if the queue is defined."""
+        return self._queue is not None
+
     def make_queue(self):
         """Finalize and make a queue."""
         self._queue = A.getfw().RandomShuffleQueue(shapes=[_input_shape[1:] for _input_shape in self.input_shapes],
@@ -128,6 +134,33 @@ class FeederRunner(object):
 
         # Make enqueue op
         self._enq_op = self._queue.enqueue_many(self._data_placeholders)
+
+    def _make_queue_size_op(self):
+        if not self.queue_is_made:
+            raise RuntimeError("Queue is yet to be defined. Consider "
+                               "calling the make_queue method first.")
+        self._queue_size_op = self.queue.size()
+
+    def get_queue_size(self, symbolic=False, session=None):
+        """
+        Gets size of the queue. If `symbolic` is set to True, a symbolic queue-size op is
+        returned. Otherwise, the op is evaluated with `session` (or the default Antipasti session
+        if none provided).
+        """
+        # Make size op
+        if self._queue_size_op is None:
+            self._make_queue_size_op()
+        # Return op if symbolic
+        if symbolic:
+            return self._queue_size_op
+        else:
+            # Get default session from backend
+            session = A.Session.session if session is None else session
+            return session.run(self._queue_size_op)
+
+    @property
+    def queue_size(self):
+        return self.get_queue_size(symbolic=False)
 
     def dq(self):
         """Get `Tensor`s resulting from dequeue'ing the queue."""
