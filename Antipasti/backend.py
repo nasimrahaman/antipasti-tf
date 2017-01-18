@@ -110,7 +110,7 @@ def reinitialize_all_variables(run_init_op=True, session=None):
     will also be reinitialized, so handle with care.
     """
     # Get initializer op
-    init_op = tf.initialize_all_variables()
+    init_op = tf.global_variables_initializer()
 
     # Run initializer op ...
     if run_init_op:
@@ -806,6 +806,29 @@ def greater(tensor1, tensor2, as_dtype=None, name=None):
     else:
         return cast(comparison, as_dtype,
                     name=(None if name is None else '{}_cast'.format(name)))
+
+
+def divide(tensor1, tensor2, divtype=None, name=None):
+    """
+    Divides tensor1 by tensor2. The argument `divtype` (a str or None) specifies the type of
+    division to be carried out, and can be one of {'floor', 'true', 'real', 'truncate', 'floor_'}.
+    These select the corresponding tensorflow division functions. Leaving divtype to None results
+    in the division function being tensorflow.divide, which computes python style division of
+    tensor1 by tensor2.
+    """
+    _ALLOWED_DIVTYPES_TO_DIVFUNCS = {None: tf.divide,
+                                     'floor': tf.floordiv,
+                                     'true': tf.truediv,
+                                     'real': tf.realdiv,
+                                     'truncate': tf.truncatediv,
+                                     'floor_': tf.floor_div}
+
+    assert divtype in _ALLOWED_DIVTYPES_TO_DIVFUNCS.keys(), \
+        "Argument `divtype` to Antipasti.backend.divide must be one " \
+        "of the following: {}. Got a {} instead.".\
+            format(_ALLOWED_DIVTYPES_TO_DIVFUNCS.keys(), divtype.__class__.__name__)
+
+    return _ALLOWED_DIVTYPES_TO_DIVFUNCS.get(divtype)(tensor1, tensor2, name=name)
 
 
 def threshold_tensor(tensor, threshold, as_dtype=_FLOATX, name='threshold'):
