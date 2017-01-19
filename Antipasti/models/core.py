@@ -66,6 +66,10 @@ class Model(object):
     def name(self, value):
         self._name = value
 
+    @property
+    def name_is_user_defined(self):
+        return self._name is not None
+
     def _stamp_string(self, string):
         return "[ModelID:{}] {}".format(self.name, string)
 

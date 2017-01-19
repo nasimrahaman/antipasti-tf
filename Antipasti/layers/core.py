@@ -181,6 +181,10 @@ class Layer(object):
         self._name = value
 
     @property
+    def name_is_user_defined(self):
+        return self._name is not None
+
+    @property
     def context_managers(self):
         # Consolidate context managers
         return self.layer_context_supermanagers.manage()
