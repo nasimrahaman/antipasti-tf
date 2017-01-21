@@ -184,13 +184,13 @@ class FeederRunner(object):
                 log("Starting epoch {} of {}".format(epoch_num, self.num_epochs_per_thread))
                 # Check if we need to break out of the loop
                 if self.coordinator.should_stop():
-                    log("Got stop signal from coordinator, breaking")
+                    log("Got stop signal from coordinator, breaking from epoch-loop")
                     break
                 # Data loop
                 while True:
                     # Check if we need to break out of the loop
                     if self.coordinator.should_stop():
-                        log("Got stop signal from coordinator, breaking")
+                        log("Got stop signal from coordinator, breaking from feeder-loop")
                         break
 
                     # Get data batch with lock
@@ -200,6 +200,7 @@ class FeederRunner(object):
                         # (if the preproccessing is not done here, this shouldn't take long)
                         log("Trying to get batch from feeder")
                         data_batch = self.feeder.next()
+                        log("Got batch from feeder")
                     except StopIteration:
                         log("StopIteration from feeder, breaking")
                         break
@@ -239,6 +240,7 @@ class FeederRunner(object):
 
         except Exception as e:
             log("Exception raised, requesting coordinator to stop")
+            log("The exception message follows: {}".format(e.message))
             self.coordinator.request_stop(e)
 
     def weave_threads(self, session=None):
@@ -247,7 +249,7 @@ class FeederRunner(object):
         session = A.Session.session if session is None else session
         # Start threads
         for thread_num in range(self.num_threads):
-            thread = threading.Thread(target=self.nq, args=(session,))
+            thread = threading.Thread(target=self.nq, args=(session, thread_num))
             thread.daemon = True
             thread.start()
             self.coordinator.register_thread(thread=thread)

@@ -433,10 +433,10 @@ class DebugLogger(object):
 
     def log(self, message, method_name=None, thread_num=None):
         if self._is_active:
-            log_message = "[{}] [{}{}{}] {}".\
+            log_message = "[{}] [{}{}{}] {}\n".\
                 format(str(datetime.now()),
                        self.object_name,
-                       ".{}".format(method_name) if method_name is None else '',
+                       ".{}".format(method_name) if method_name is not None else '',
                        "::thread_{}".format(thread_num) if thread_num is not None else '',
                        message)
             self.output_stream.write(log_message)
