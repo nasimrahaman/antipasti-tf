@@ -4,6 +4,7 @@ import threading
 
 from .. import backend as A
 from ..utilities import utils
+from ..utilities import pyutils2 as py2
 from ..legacy import pykit as py
 
 
@@ -23,6 +24,7 @@ class FeederRunner(object):
         self._enq_op = None
         self._data_placeholders = None
         self._coordinator = None
+        self._debug_logger = None
 
         self.feeder_lock = threading.Lock()
 
@@ -167,34 +169,46 @@ class FeederRunner(object):
         dqd = self.queue.dequeue_many(self.batch_size)
         return dqd
 
-    def nq(self, session=None):
+    def nq(self, session=None, thread_num=None):
         """Read data from feeder, apply preprocessor and enqueue. This function is executed by a single thread."""
+        # Get debug logger function
+        log = self.debug_logger.get_logger_for('nq', thread_num)
+
+        log("Getting session")
         # Get default session from backend
         session = A.Session.session if session is None else session
 
         try:
             # Iterate and add to feeder
             for epoch_num in range(self.num_epochs_per_thread):
+                log("Starting epoch {} of {}".format(epoch_num, self.num_epochs_per_thread))
                 # Check if we need to break out of the loop
                 if self.coordinator.should_stop():
+                    log("Got stop signal from coordinator, breaking")
                     break
                 # Data loop
                 while True:
                     # Check if we need to break out of the loop
                     if self.coordinator.should_stop():
+                        log("Got stop signal from coordinator, breaking")
                         break
 
                     # Get data batch with lock
                     self.feeder_lock.acquire()
+                    log("Acquired feeder lock")
                     try:
                         # (if the preproccessing is not done here, this shouldn't take long)
+                        log("Trying to get batch from feeder")
                         data_batch = self.feeder.next()
                     except StopIteration:
+                        log("StopIteration from feeder, breaking")
                         break
                     finally:
                         # Release lock
+                        log("Releasing feeder lock")
                         self.feeder_lock.release()
 
+                    log("Preprocessing")
                     # Preprocess data_batch
                     prepped_data_batch = self.preprocessor(data_batch)
 
@@ -207,19 +221,24 @@ class FeederRunner(object):
                     # Get feed dict
                     feed_dict = {_placeholder: _data_tensor
                                  for _placeholder, _data_tensor in zip(self._data_placeholders, prepped_data_batch)}
+                    log("Enqueuing")
                     # NQ
                     session.run(self._enq_op, feed_dict=feed_dict)
-
+                    log("Enqueued")
                 # Restart feeder for the next epoch (if possible, break otherwise)
                 if hasattr(self.feeder, 'restart_generator'):
+                    log("Restarting generator")
                     self.feeder.restart_generator()
                 elif hasattr(self.feeder, 'restartgenerator'):
+                    log("Restarting generator (legacy)")
                     # Legacy support
                     self.feeder.restartgenerator()
                 else:
+                    log("Breaking")
                     break
 
         except Exception as e:
+            log("Exception raised, requesting coordinator to stop")
             self.coordinator.request_stop(e)
 
     def weave_threads(self, session=None):
@@ -249,4 +268,19 @@ class FeederRunner(object):
     def join_runner(self):
         """Stop all threads and wait for them to finish."""
         self.coordinator.join()
+
+    @property
+    def debug_logger(self):
+        """Get logger for debug messages."""
+        if self._debug_logger is None:
+            self._debug_logger = py2.DebugLogger(object_name='FeederRunner', activate=False)
+        return self._debug_logger
+
+    @debug_logger.setter
+    def debug_logger(self, value):
+        if value is not None:
+            assert isinstance(value, py2.DebugLogger), \
+                "`debug_logger` must be a `DebugLogger` object, " \
+                "got {} instead.".format(value.__class__.__name__)
+            self._debug_logger = value
 

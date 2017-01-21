@@ -1,7 +1,9 @@
 """Python Utilities. Functions in this module are not supposed to invoke the backend."""
 
+import sys
 import random
 import string
+from datetime import datetime
 from collections import OrderedDict
 
 from ..legacy import pykit as py
@@ -386,3 +388,58 @@ class ParameterCollection(DictList):
     _split_parameter_tag = split_parameter_tag
     _get_parameter_tag = get_parameter_tag
 
+
+# ---------------- DEBUG-UTILITIES ----------------
+
+
+class DebugLogger(object):
+    def __init__(self, object_name, output_stream=None, activate=True):
+        # Private variables
+        self._output_stream = None
+        self._object_name = None
+        self._is_active = activate
+        # Assignments
+        self.object_name = object_name
+        self.output_stream = output_stream
+
+    @property
+    def output_stream(self):
+        if self._output_stream is None:
+            self._output_stream = sys.stdout
+        return self._output_stream
+
+    @output_stream.setter
+    def output_stream(self, value):
+        if value is not None:
+            assert hasattr(value, 'write') and callable(value.write), \
+                "`output_stream` must have a callable `write` attribute."
+            self._output_stream = value
+
+    @property
+    def object_name(self):
+        return self._object_name
+
+    @object_name.setter
+    def object_name(self, value):
+        assert isinstance(value, str), \
+            "`object_name` must be a string, got {} instead.".format(value.__class__.__name__)
+        self._object_name = value
+
+    def activate(self):
+        self._is_active = True
+
+    def deactivate(self):
+        self._is_active = False
+
+    def log(self, message, method_name=None, thread_num=None):
+        if self._is_active:
+            log_message = "[{}] [{}{}{}] {}".\
+                format(str(datetime.now()),
+                       self.object_name,
+                       ".{}".format(method_name) if method_name is None else '',
+                       "::thread_{}".format(thread_num) if thread_num is not None else '',
+                       message)
+            self.output_stream.write(log_message)
+
+    def get_logger_for(self, method_name=None, thread_num=None):
+        return lambda message: self.log(message, method_name=method_name, thread_num=thread_num)
