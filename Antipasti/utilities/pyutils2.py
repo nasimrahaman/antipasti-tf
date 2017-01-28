@@ -3,6 +3,7 @@
 import sys
 import random
 import string
+import threading
 from datetime import datetime
 from collections import OrderedDict
 
@@ -433,6 +434,8 @@ class DebugLogger(object):
 
     def log(self, message, method_name=None, thread_num=None):
         if self._is_active:
+            # Get thread name from python if none provided
+            thread_num = threading.current_thread().ident if thread_num is None else thread_num
             log_message = "[{}] [{}{}{}] {}\n".\
                 format(str(datetime.now()),
                        self.object_name,
@@ -442,4 +445,58 @@ class DebugLogger(object):
             self.output_stream.write(log_message)
 
     def get_logger_for(self, method_name=None, thread_num=None):
-        return lambda message: self.log(message, method_name=method_name, thread_num=thread_num)
+        return _MethodLogger(self, method_name=method_name, thread_num=thread_num)
+
+
+class _MethodLogger(object):
+    def __init__(self, debug_logger, method_name=None, thread_num=None):
+        """
+        :type debug_logger: DebugLogger
+        :param debug_logger: Debug Logger to go with this _MethodLogger.
+
+        :type method_name: str
+        :param method_name: Name of the method this logger is to be called from.
+
+        :type thread_num: str
+        :param thread_num: Thread this logger is to be called from.
+        """
+        # Private
+        self._analysis_lambdas = {'type': lambda obj: type(obj)}
+        self._method_logger_is_active = True
+        # Not private
+        self.debug_logger = debug_logger
+        self.method_name = method_name
+        self.thread_num = thread_num
+
+    def activate(self):
+        self._method_logger_is_active = True
+
+    def deactivate(self):
+        self._method_logger_is_active = False
+
+    def add_analysis_lambdas(self, **analysis_lambdas):
+        assert all([callable(lamb) for lamb in analysis_lambdas.values()]), \
+            "`analysis_lambdas` must be a dictionary with callable values."
+        self._analysis_lambdas.update(analysis_lambdas)
+
+    def remove_analysis_lambdas(self, *analysis_lambdas):
+        for analysis_lambda in analysis_lambdas:
+            self._analysis_lambdas.pop(analysis_lambda)
+
+    def __call__(self, message):
+        if self._method_logger_is_active:
+            self.debug_logger.log(message,
+                                  method_name=self.method_name,
+                                  thread_num=self.thread_num)
+
+    def analyze(self, object_, object_name=None, **extra_analysis_lambdas):
+        analysis_string = "[Analysis: {}] ".format(object_name if object_name is not None else '')
+        all_analysis_lambdas = dict(self._analysis_lambdas.items() + extra_analysis_lambdas.items())
+        for analysis_name, analysis_lambda in all_analysis_lambdas.items():
+            try:
+                analysis_result = analysis_lambda(object_)
+            except:
+                analysis_result = "FAILED"
+            analysis_string += "| {} :: {} |".format(analysis_name, analysis_result)
+        self.__call__(analysis_string)
+
