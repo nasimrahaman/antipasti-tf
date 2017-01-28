@@ -169,10 +169,10 @@ class FeederRunner(object):
         dqd = self.queue.dequeue_many(self.batch_size)
         return dqd
 
-    def nq(self, session=None, thread_num=None):
+    def nq(self, session=None):
         """Read data from feeder, apply preprocessor and enqueue. This function is executed by a single thread."""
         # Get debug logger function
-        log = self.debug_logger.get_logger_for('nq', thread_num)
+        log = self.debug_logger.get_logger_for('nq')
 
         log("Getting session")
         # Get default session from backend
@@ -249,7 +249,7 @@ class FeederRunner(object):
         session = A.Session.session if session is None else session
         # Start threads
         for thread_num in range(self.num_threads):
-            thread = threading.Thread(target=self.nq, args=(session, thread_num))
+            thread = threading.Thread(target=self.nq, args=(session,))
             thread.daemon = True
             thread.start()
             self.coordinator.register_thread(thread=thread)
