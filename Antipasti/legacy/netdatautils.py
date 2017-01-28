@@ -140,7 +140,7 @@ def toh5(data, path, datapath='data'):
 
 # Define a sliding window iterator (this time, more readable than a wannabe one-liner)
 def slidingwindowslices(shape, nhoodsize, stride=1, ds=1, window=None, ignoreborder=True, shuffle=True, rngseed=None,
-                        startmins=None, startmaxs=None, shufflebuffersize=1000):
+                        startmins=None, startmaxs=None, dataslice=None, shufflebuffersize=1000):
     """
     Returns a generator yielding (shuffled) sliding window slice objects.
 
@@ -189,8 +189,15 @@ def slidingwindowslices(shape, nhoodsize, stride=1, ds=1, window=None, ignorebor
         return slices
 
     # Get window start limits
-    startmins = [0, ] * datadim if startmins is None else startmins
-    startmaxs = [shp - nhoodsiz for shp, nhoodsiz in zip(shape, nhoodsize)] if startmaxs is None else startmaxs
+    if dataslice is None:
+        startmins = [0, ] * datadim if startmins is None else startmins
+        startmaxs = [shp - nhoodsiz for shp, nhoodsiz in zip(shape, nhoodsize)] \
+            if startmaxs is None else startmaxs
+    else:
+        assert len(dataslice) == datadim, \
+            "Dataslice must be a tuple with len = data dimension."
+        startmins = [sl.start for sl in dataslice]
+        startmaxs = [sl.stop - nhoodsiz for sl, nhoodsiz in zip(dataslice, nhoodsize)]
 
     # The final iterator is going to be a cartesian product of the lists in nslices
     nslices = [_1Dwindow(startmin, startmax, nhoodsiz, st, dsample, datalen, shuffle) if windowspec == 'x'
