@@ -81,7 +81,7 @@ class TFSession(object):
             # Prepare an Antipasti session (if there isn't one already)
             if self._antipasti_session is None:
                 # Prepare session
-                self._antipasti_session = sess = tf.Session(self._antipasti_session_config)
+                self._antipasti_session = sess = tf.Session(config=self._antipasti_session_config)
             else:
                 # Antipasti session available
                 sess = self._antipasti_session
@@ -145,6 +145,14 @@ def get_all_global_variables(as_name_variable_dict=False):
         return tf.global_variables()
     else:
         return {var.name: var for var in tf.global_variables()}
+
+
+def run(fetches, feed_dict=None, options=None, run_metadata=None, session=None,
+        initialize_variables=False):
+    session = Session.session if session is None else session
+    if initialize_variables:
+        initialize_all_variables(session=session)
+    return session.run(fetches, feed_dict=feed_dict, options=options, run_metadata=run_metadata)
 
 
 # ------------------- COLLECTION-UTILITIES -------------------
@@ -463,7 +471,8 @@ def to_tf_dtype(dtype):
 def unref_tf_dtype(dtype):
     """Converts e.g. tf.float32_ref to tf.float32."""
     # Make sure dtype is a tf.dtype
-    dtype = to_tf_dtype(dtype)
+    if isinstance(dtype, str):
+        dtype = to_tf_dtype(dtype)
     # Check if '_ref' in name
     if dtype.name.endswith('_ref'):
         dtype_str = dtype.name[:-4]
@@ -650,10 +659,13 @@ def placeholder_like(ph, **placeholder_kwargs):
 # ------------------- TENSOR-INFO-AND-MANIPULATION -------------------
 
 
-def ndim(tensor):
+def ndim(tensor, symbolic=False):
     """Returns the number of dimensions in a tensor."""
-    var_shape = shape(tensor)
-    return None if var_shape is None else len(var_shape)
+    var_shape = shape(tensor, symbolic=symbolic)
+    if symbolic:
+        return var_shape[0]
+    else:
+        return None if var_shape is None else len(var_shape)
 
 
 def shape(tensor, symbolic=False):
@@ -831,6 +843,10 @@ def divide(tensor1, tensor2, divtype=None, name=None):
     return _ALLOWED_DIVTYPES_TO_DIVFUNCS.get(divtype)(tensor1, tensor2, name=name)
 
 
+def log(tensor, name=None):
+    return tf.log(tensor, name=name)
+
+
 def threshold_tensor(tensor, threshold, as_dtype=_FLOATX, name='threshold'):
     return greater(tensor, threshold, as_dtype=as_dtype, name=name)
 
@@ -1001,3 +1017,105 @@ def binary_accuracy(prediction, target, prediction_threshold=0.5, target_thresho
                                mode='mean', name='bin_accuracy_reduction')
     # Return binary accuracy scalar
     return _binary_accuracy
+
+
+def frequency_distribution(tensor, normalize=True, min_tensor_value=0., max_tensor_value=1.,
+                           n_bins=10, dtype=_FLOATX, epsilon=1e-8):
+    """
+    Computes the frequency distribution of `tensor`.
+
+    :type tensor: tensorflow.Tensor
+    :param tensor: A tensor.
+
+    :type normalize: bool
+    :param normalize: Whether to normalize the frequency distribution.
+                      A constant `epsilon` is added to the unnormalized frequency
+                      distribution to avoid having zeros in the output distribution
+                      vector to make it numerically stable for e.g. entropy computations.
+
+    :type min_tensor_value: float or tensorflow.Tensor
+    :param min_tensor_value: The smallest possible value in `tensor`.
+
+    :type max_tensor_value: float or tensorflow.Tensor
+    :param max_tensor_value: The largest possible value in `tensor`.
+
+    :type n_bins: int
+    :param n_bins: Number of bins to compute the histogram with.
+
+    :type dtype: str
+    :param dtype: Output datatype.
+
+    :type epsilon: float
+    :param epsilon: A small float value for numerical stability.
+
+    :return: Frequency distribution as a floatX vector.
+    """
+    # Parse dtype
+    dtype = to_tf_dtype(dtype)
+    # Compute histogram
+    hist = tf.histogram_fixed_width(tensor,
+                                    value_range=[min_tensor_value, max_tensor_value],
+                                    nbins=n_bins, dtype=dtype)
+    # Normalize histogram if required
+    if normalize:
+        hist = divide(hist + epsilon, reduce_((hist + epsilon), 'sum'))
+    # Done
+    return hist
+
+
+def shannon_entropy(tensor, min_tensor_value=0., max_tensor_value=1., n_bins=10):
+    """
+    Computes the shannon entropy of the frequency distribution of `tensor`.
+
+    :type tensor: tensorflow.Tensor
+    :param tensor: A tensor.
+
+    :type min_tensor_value: float or tensorflow.Tensor
+    :param min_tensor_value: The smallest possible value in `tensor`.
+
+    :type max_tensor_value: float or tensorflow.Tensor
+    :param max_tensor_value: The largest possible value in `tensor`.
+
+    :type n_bins: int
+    :param n_bins: Number of bins to compute the histogram with.
+
+    :return: Shannon entropy scalar.
+    """
+    # Compute normalized histogram
+    normalized_hist = frequency_distribution(tensor, normalize=True,
+                                             min_tensor_value=min_tensor_value,
+                                             max_tensor_value=max_tensor_value, n_bins=n_bins)
+    # Compute shannon entropy
+    _shannon_entropy = reduce_(-log(normalized_hist) * normalized_hist, 'sum')
+    # Done
+    return _shannon_entropy
+
+
+def kullback_leibler_divergence_of_frequency_distributions(tensor_p, tensor_q):
+    """
+    Computes KL-Divergence of the frequency distributions of `tensor_p` and `tensor_q`.
+    Assumes both `tensor_p` and `tensor_q` have values between 0. and 1.
+    """
+    # Compute normalized frequency distributions (NFD's)
+    p = frequency_distribution(tensor_p, normalize=True)
+    q = frequency_distribution(tensor_q, normalize=True)
+    # Compute KL-Divergence
+    kl_divergence = reduce_(p * log(divide(p, q)), 'sum')
+    return kl_divergence
+
+
+def jensen_shannon_divergence_of_frequency_distributions(tensor_p, tensor_q):
+    """
+    Computes the Jensen-Shannon divergence of the frequency distributions of
+    tensor_p and tensor_q.
+    """
+    # Compute normalized frequency distributions (NFD's)
+    p = frequency_distribution(tensor_p, normalize=True)
+    q = frequency_distribution(tensor_q, normalize=True)
+    m = 0.5 * (p + q)
+    # Compute KL-Divergences
+    kl_divergence_pm = reduce_(p * log(divide(p, m)), 'sum')
+    kl_divergence_qm = reduce_(q * log(divide(q, m)), 'sum')
+    # Compute JS-Divergence
+    js_divergence = 0.5 * (kl_divergence_pm + kl_divergence_qm)
+    return js_divergence
