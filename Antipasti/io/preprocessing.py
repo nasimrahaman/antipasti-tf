@@ -39,6 +39,7 @@ def as_function_over_axes(axes):
 
     def decorator(function):
         def _new_function(batches_in):
+            batches_in_was_listlike = isinstance(batches_in, (list, tuple))
             batches_in = py.obj2list(batches_in, ndarray2list=False)
             # Validate
             for batch_in in batches_in:
@@ -71,8 +72,11 @@ def as_function_over_axes(axes):
                                           ndarray2list=False)
                 for given_batch_out, given_output in zip(batches_out, all_outputs):
                     given_batch_out[_slice] = given_output
-            # Delist and return
-            return py.delist(batches_out)
+            # Delist if batches_in was listlike and return
+            if not batches_in_was_listlike:
+                return py.delist(batches_out)
+            else:
+                return batches_out
         return _new_function
     return decorator
 
