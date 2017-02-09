@@ -9,6 +9,8 @@ from collections import OrderedDict
 
 from ..legacy import pykit as py
 
+import numpy as np
+
 
 # ---------------- FUNCTION-TOOLS ----------------
 
@@ -399,6 +401,7 @@ class DebugLogger(object):
         self._output_stream = None
         self._object_name = None
         self._is_active = activate
+        self._write_lock = threading.RLock()
         # Assignments
         self.object_name = object_name
         self.output_stream = output_stream
@@ -442,10 +445,15 @@ class DebugLogger(object):
                        ".{}".format(method_name) if method_name is not None else '',
                        "::thread_{}".format(thread_num) if thread_num is not None else '',
                        message)
-            self.output_stream.write(log_message)
+            with self._write_lock:
+                self.output_stream.write(log_message)
 
     def get_logger_for(self, method_name=None, thread_num=None):
         return _MethodLogger(self, method_name=method_name, thread_num=thread_num)
+
+    def clean_up(self):
+        """Close open file streams."""
+        self.output_stream.close()
 
 
 class _MethodLogger(object):
@@ -490,6 +498,9 @@ class _MethodLogger(object):
                                   thread_num=self.thread_num)
 
     def analyze(self, object_, object_name=None, **extra_analysis_lambdas):
+        # No analysis if method_logger is not active
+        if not self._method_logger_is_active:
+            return
         analysis_string = "[Analysis: {}] ".format(object_name if object_name is not None else '')
         all_analysis_lambdas = dict(self._analysis_lambdas.items() + extra_analysis_lambdas.items())
         for analysis_name, analysis_lambda in all_analysis_lambdas.items():
@@ -500,3 +511,49 @@ class _MethodLogger(object):
             analysis_string += "| {} :: {} |".format(analysis_name, analysis_result)
         self.__call__(analysis_string)
 
+    @staticmethod
+    def autofetch_analysis_lambdas(object_):
+        _is_np_array = lambda obj: isinstance(obj, np.ndarray)
+
+        # Get object type
+        if isinstance(object_, (list, tuple)):
+            # List or tuple
+            if all(_is_np_array(elem) for elem in object_):
+                # List or tuple of numpy arrays
+                object_type = 'list[ndarray]'
+            else:
+                # Just a plain old list or tuple
+                object_type = 'list'
+        elif _is_np_array(object_):
+            # Numpy array
+            object_type = 'ndarray'
+        else:
+            object_type = None
+
+        # Lambda library
+        lambda_library = {'list[ndarray]': {'length': len,
+                                            'shape_of_first_element': lambda x: x[0].shape,
+                                            'shape_of_last_element': lambda x: x[-1].shape},
+
+                          'list': {'length': len,
+                                   'dtype_of_first_element': lambda x: type(x[0]),
+                                   'dtype_of_last_element': lambda x: type(x[-1])},
+
+                          'ndarray': {'shape': lambda x: x.shape,
+                                      'max': lambda x: x.max(),
+                                      'mean': lambda x: x.mean(),
+                                      'min': lambda x: x.min()}}
+        return lambda_library.get(object_type, {})
+
+
+class MultiplexedFileStream(object):
+    def __init__(self, *streams):
+        self.streams = list(streams)
+
+    def write(self, p_str):
+        for stream in self.streams:
+            stream.write(p_str)
+
+    def close(self):
+        for stream in self.streams:
+            stream.close()
