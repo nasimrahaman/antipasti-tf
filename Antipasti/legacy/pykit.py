@@ -183,7 +183,12 @@ def getindex(obj, idx, lol=False):
             return list2listoflists(obj)[idx]
         else:
             return obj[idx]
-    pass
+
+
+def smartappend(obj1, obj2, ndarray2list=False):
+    obj1 = obj2list(obj1, ndarray2list=ndarray2list)[:]
+    obj2 = obj2list(obj2, ndarray2list=ndarray2list)[:]
+    return obj1 + obj2
 
 
 # Function to migrate attributes from one instance of a class to another. This was written to be used for weight
