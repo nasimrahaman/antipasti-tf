@@ -4,8 +4,10 @@ import sys
 import random
 import string
 import threading
+import time
 from datetime import datetime
 from collections import OrderedDict
+from Queue import Queue, Empty
 
 from ..legacy import pykit as py
 
@@ -547,6 +549,7 @@ class _MethodLogger(object):
 
 
 class MultiplexedFileStream(object):
+    """Bundle multiple file-streams to one stream-like object."""
     def __init__(self, *streams):
         self.streams = list(streams)
 
@@ -557,3 +560,144 @@ class MultiplexedFileStream(object):
     def close(self):
         for stream in self.streams:
             stream.close()
+
+
+class BufferedFunction(object):
+    def __init__(self, target, num_threads=1, interrupt_event=None, latency=1):
+        # Private
+        self._inbound_queue = Queue()
+        self._outbound_queue = Queue()
+        self._agent_spec = []
+        self._put_count = 0
+        self._get_count = 0
+        self._target_is_running = threading.Event()
+        # Public
+        self.target = target
+        self.num_threads = num_threads
+        self.interrupt_event = interrupt_event if interrupt_event is not None else threading.Event()
+        self.latency = latency
+
+    def _decorate_target(self, target):
+        def agent(inbound_queue, outbound_queue):
+            # Main thread loop
+            while True:
+                # Break if interrupt event is set
+                if self.interrupt_event.is_set():
+                    break
+
+                # Try to fetch from queue
+                try:
+                    from_queue = inbound_queue.get(timeout=self.latency)
+                except Empty:
+                    # Move on if nothing in queue
+                    continue
+
+                if isinstance(from_queue, PoisonPill):
+                    break
+                try:
+                    # Set target running event
+                    self._target_is_running.set()
+                    # Pass what's fetched to the target
+                    from_target = target(from_queue)
+                    # Clear target running event
+                    self._target_is_running.clear()
+                except Exception:
+                    # Clear target running event
+                    self._target_is_running.clear()
+                    # Uh-oh
+                    # Interrupt all other threads
+                    self.interrupt_event.set()
+                    raise
+                # Put to outbound queue
+                outbound_queue.put(from_target)
+            return
+        return agent
+
+    def start(self):
+        """Start all computation threads."""
+        # Fetch agents
+        for thread_num in range(self.num_threads):
+            # Make agent by decorating target
+            agent = self._decorate_target(self.target)
+            agent_thread = threading.Thread(target=agent,
+                                            args=(self._inbound_queue, self._outbound_queue))
+            self._agent_spec.append({'thread_num': thread_num,
+                                     'agent': agent,
+                                     'thread': agent_thread})
+            # Start agent thread
+            agent_thread.start()
+
+    def stop(self):
+        """Interrupt all computation threads."""
+        # Set interrupt event
+        self.interrupt_event.set()
+        # Join
+        self.join()
+
+    def join(self):
+        """Join all computation threads."""
+        for agent_spec in self._agent_spec:
+            agent_spec['thread'].join()
+
+    def is_alive(self):
+        """Checks if threads are defined and alive."""
+        if len(self._agent_spec) == 0:
+            return False
+        else:
+            return all(agent_spec['thread'].is_alive() for agent_spec in self._agent_spec)
+
+    def put(self, item):
+        self._put_count += 1
+        self._inbound_queue.put(item)
+
+    def size(self):
+        return self._put_count - self._get_count
+
+    def get(self, timeout=None):
+        # Check if timeout is None.
+        if timeout is not None:
+            retry_getting = False
+        else:
+            retry_getting = True
+            timeout = self.latency
+        # Check if there are enough items in the queue, or this function call could result
+        # in a deadlock.
+        if self._get_count >= self._put_count:
+            self.interrupt_event.set()
+            raise RuntimeError("Not enough items in the queue.")
+
+        while True:
+            if self.interrupt_event.is_set():
+                break
+            try:
+                out = self._outbound_queue.get(timeout=timeout)
+                self._get_count += 1
+                return out
+            except Empty:
+                if retry_getting:
+                    continue
+                else:
+                    return
+
+    def done(self):
+        """Kill threads when they're done."""
+        # We'll need as many poison pills as agents
+        for _ in range(self.num_threads):
+            self.put(PoisonPill())
+
+    def stop_when_done(self):
+        """
+        Stops all threads when they're finished, i.e. when there are no jobs enqueued in the
+        inbound queue and no targets are running.
+        """
+        while True:
+            if self._inbound_queue.qsize() == 0 and not self._target_is_running.is_set():
+                self.interrupt_event.set()
+                break
+            else:
+                time.sleep(self.latency)
+        self.join()
+
+
+class PoisonPill(object):
+    pass
