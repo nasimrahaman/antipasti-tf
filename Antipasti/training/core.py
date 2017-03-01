@@ -20,7 +20,10 @@ class Trainer(object):
 
 
 def application(method):
-    """Decorator for the apply functions. Fetches model from the class (if None provided) and applies the method."""
+    """
+    Decorator for the apply functions. Fetches model from the class (if None provided)
+    and applies the method.
+    """
 
     def _method(cls, model=None):
 
@@ -97,7 +100,8 @@ class ModelApp(object):
 class Loss(ModelApp):
     """Abstract class for a loss function (not neccesarily an objective)."""
 
-    _ALLOWED_KWARGS = {'aggregation_method', 'weights', 'y', 'yt', 'loss_vector', 'loss_scalar', 'method'}
+    _ALLOWED_KWARGS = {'aggregation_method', 'weights', 'y', 'yt', 'loss_vector', 'loss_scalar',
+                       'method'}
 
     def __init__(self, model=None, **kwargs):
         # Property containers
@@ -152,8 +156,9 @@ class Loss(ModelApp):
         if value_shape is not None:
             # Check whether shape is right along the channel axis
             assert value_shape[-1] == 1 or value_shape[-1] is None, \
-                self._stamp_string("The weight tensor of inferred shape {} must be of length 1 along "
-                                   "the channel axis, got {} instead.".format(value_shape, value_shape[-1]))
+                self._stamp_string("The weight tensor of inferred shape {} must be of length "
+                                   "1 along the channel axis, got {} instead."
+                                   .format(value_shape, value_shape[-1]))
         self._weights = value
 
     @property
@@ -270,8 +275,9 @@ class Loss(ModelApp):
         value_ndim = A.ndim(value)
         if value_ndim is not None:
             value_shape = A.shape(value)
-            assert value_ndim == 1, self._stamp_string("Expected loss vector to be a vector (1-D tensor), "
-                                                       "got a {}-D tensor of shape {} instead.".
+            assert value_ndim == 1, self._stamp_string("Expected loss vector to be a vector "
+                                                       "(1-D tensor), got a {}-D tensor of shape "
+                                                       "{} instead.".
                                                        format(value_ndim, value_shape))
         self._loss_vector = value
         # A new loss_scalar needs to be computed, so we get rid of the one in cache
@@ -306,8 +312,9 @@ class Loss(ModelApp):
         value_ndim = A.ndim(value)
         if value_ndim is not None:
             value_shape = A.shape(value)
-            assert value_ndim == 0, self._stamp_string("Expected loss scalar to be a scalar (0-D tensor), "
-                                                       "got a {}-D tensor of shape {} instead.".
+            assert value_ndim == 0, self._stamp_string("Expected loss scalar to be a scalar "
+                                                       "(0-D tensor), got a {}-D tensor of shape "
+                                                       "{} instead.".
                                                        format(value_ndim, value_shape))
         self._loss_scalar = value
 
@@ -316,7 +323,10 @@ class Loss(ModelApp):
         return A.reduce_(self.loss_vector, mode=self.aggregation_method, name='loss_aggregation')
 
     def __call__(self, prediction, label):
-        """Get the loss for all instances in a batch individually given the prediction and the label tensor."""
+        """
+        Get the loss for all instances in a batch individually given the
+        prediction and the label tensor.
+        """
         return self.method(prediction, label)
 
     @application
@@ -393,8 +403,10 @@ class Regularizer(ModelApp):
         self.aggregation_method = kwargs.get('aggregation_method', default='mean')
         self.regularization_scalar = kwargs.get('regularization_scalar')
 
-        self.collection_read_access_granted = kwargs.get('grant_collection_read_access', default=True)
-        self.collection_write_access_granted = kwargs.get('grant_collection_write_access', default=False)
+        self.collection_read_access_granted = kwargs.get('grant_collection_read_access',
+                                                         default=True)
+        self.collection_write_access_granted = kwargs.get('grant_collection_write_access',
+                                                          default=False)
 
     @property
     def model(self):
@@ -421,7 +433,8 @@ class Regularizer(ModelApp):
             else:
                 raise RuntimeError(self._stamp_string("Parameters have not been defined yet. "
                                                       "To define `parameters`, consider assigning "
-                                                      "to Regularizer.parameters, or provide a model."))
+                                                      "to Regularizer.parameters, or provide a "
+                                                      "model."))
 
     @parameters.setter
     def parameters(self, value):
@@ -431,7 +444,8 @@ class Regularizer(ModelApp):
         # Parameter assignment is not possible if a model is bound
         if self.model is not None:
             warn(self._stamp_string('Setting `parameters` has no effect if `model` is bound. '
-                                    'Consider unbinding the model first with `unbind_model` method.'),
+                                    'Consider unbinding the model first with `unbind_model` '
+                                    'method.'),
                  RuntimeWarning)
         else:
             # Convert from parameter collection if required
@@ -553,7 +567,8 @@ class Regularizer(ModelApp):
         coefficients = py.broadcast(coefficients, len(self._penalty_scalars))
 
         weighted_penalty_scalars = [A.multiply(coefficient, penalty_scalar)
-                                    for coefficient, penalty_scalar in zip(coefficients, penalty_scalars)]
+                                    for coefficient, penalty_scalar in zip(coefficients,
+                                                                           penalty_scalars)]
 
         # Write to collection if allowed
         if self.collection_write_access_granted:
@@ -561,7 +576,8 @@ class Regularizer(ModelApp):
                 A.add_to_collection(A.Collections.REGULARIZABLE_VARIABLES, weighted_penalty_scalar)
 
         # Aggregate
-        regularization_scalar = {'sum': A.add_n, 'mean': A.mean_n}[self.aggregation_method](weighted_penalty_scalars)
+        regularization_scalar = \
+            {'sum': A.add_n, 'mean': A.mean_n}[self.aggregation_method](weighted_penalty_scalars)
         return regularization_scalar
 
     @application
@@ -605,7 +621,7 @@ class Objective(ModelApp):
 
     _ALLOWED_KWARGS = {'losses', 'regularizers',
                        'objective_scalar',
-                       'parameters', 'gradients',
+                       'trainable_parameters', 'gradients',
                        'grant_collection_read_access',
                        'optimizer'}
 
@@ -615,7 +631,7 @@ class Objective(ModelApp):
         self._losses = None
         self._regularizers = None
         self._objective_scalar = None
-        self._parameters = None
+        self._trainable_parameters = None
         self._gradients = None
         self._optimizer = None
 
@@ -629,7 +645,7 @@ class Objective(ModelApp):
         self.losses = kwargs.get('losses')
         self.regularizers = kwargs.get('regularizers')
         self.objective_scalar = kwargs.get('objective_scalar')
-        self.parameters = kwargs.get('parameters')
+        self.trainable_parameters = kwargs.get('trainable_parameters')
 
     @application
     def apply(self, model):
@@ -745,11 +761,11 @@ class Objective(ModelApp):
         return _objective_scalar
 
     @property
-    def parameters(self):
+    def trainable_parameters(self):
         if self.model is not None:
             return py2.filter_antipasti_trainable(py.obj2list(self.model.parameters))
-        elif self._parameters is not None:
-            return py2.filter_antipasti_trainable(py.obj2list(self._parameters))
+        elif self._trainable_parameters is not None:
+            return py2.filter_antipasti_trainable(py.obj2list(self._trainable_parameters))
         else:
             # Try to get from tensorflow collection
             _trainable_variables = A.get_from_collection(A.Collections.TRAINABLE_VARIABLES)
@@ -758,15 +774,16 @@ class Objective(ModelApp):
             else:
                 raise RuntimeError(self._stamp_string("Parameters are yet to be defined."))
 
-    @parameters.setter
-    def parameters(self, value):
+    @trainable_parameters.setter
+    def trainable_parameters(self, value):
         if value is None:
             return 
         if self.model is not None:
-            warn(self._stamp_string("Setting parameters has no effect when model is attached."),
+            warn(self._stamp_string("Setting trainable_parameters has no effect when "
+                                    "model is attached."),
                  RuntimeWarning)
         else:
-            self._parameters = py2.filter_antipasti_trainable(py.obj2list(value))
+            self._trainable_parameters = py2.filter_antipasti_trainable(py.obj2list(value))
             # gradients need to be recomputed
             self.reset('gradients')
 
@@ -791,12 +808,13 @@ class Objective(ModelApp):
     def gradients(self, value):
         if value is None:
             return
-        _parameters = self.parameters
+        _parameters = self.trainable_parameters
         # Convert value to a list and validate
         value = py.obj2list(value)
         assert len(value) == len(_parameters), \
-            self._stamp_string("The number of gradient tensors must equal the number of trainable parameters. "
-                               "Given `gradients` is a list of {} objects, but there are {} trainable parameters."
+            self._stamp_string("The number of gradient tensors must equal the number of "
+                               "trainable parameters. Given `gradients` is a list of {} objects, "
+                               "but there are {} trainable parameters."
                                .format(len(value), len(_parameters)))
         assert all([A.is_tf_tensor(val) for val in value]), \
             self._stamp_string("Provided `gradients` must be a list of tensorflow tensors.")
@@ -805,9 +823,9 @@ class Objective(ModelApp):
         self._gradients = value
 
     def _get_gradients(self):
-        # Get objective and parameters
+        # Get objective and trainable_parameters
         _objective_scalar = self.objective_scalar
-        _parameters = self.parameters
+        _parameters = self.trainable_parameters
         _gradients = A.gradients(_objective_scalar, with_respect_to=_parameters,
                                  optimizer=self.optimizer)
         return _gradients
@@ -831,7 +849,7 @@ class Objective(ModelApp):
         _name_attribute_map = {'losses': self._losses,
                                'regularizers': self._regularizers,
                                'objective_scalar': self._objective_scalar,
-                               'parameters': self._parameters,
+                               'trainable_parameters': self._trainable_parameters,
                                'gradients': self._gradients}
         self._reset_attributes(reset_what, _name_attribute_map)
 
@@ -840,6 +858,7 @@ class Optimizer(ModelApp):
     """Abstract class for an optimizer."""
     def __init__(self, model=None, **kwargs):
         self.model = model
+
 
     @application
     def apply(self, model=None):
@@ -852,4 +871,5 @@ def apply(this, on):
         this.apply(on)
     else:
         raise NotImplementedError("Given `this` object (of class {}) "
-                                  "doesn't have a callable `apply` method.".format(this.__class__.__name__))
+                                  "doesn't have a callable `apply` method."
+                                  .format(this.__class__.__name__))
