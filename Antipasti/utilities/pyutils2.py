@@ -85,7 +85,23 @@ def get_from_antipasti_collection(object_, key, default=None):
     if not hasattr(object_, '_antipasti_collection'):
         return default
     else:
-        return getattr(object_, '_antipasti_collection').get(key, default=default)
+        return getattr(object_, '_antipasti_collection').get(key, default)
+
+
+def get_antipasti_collection(object_):
+    """Gets the entire Antipasti collection dict of an object."""
+    if not hasattr(object_, '_antipasti_collection'):
+        setattr(object_, '_antipasti_collection', {})
+    return getattr(object_, '_antipasti_collection')
+
+
+def copy_antipasti_collection(from_, to_):
+    """
+    Copies Antipasti collection of object `from_` to object `to_`. Conflicting keys in `to_`
+    will be overwritten.
+    """
+    collection_to_copy = get_antipasti_collection(from_)
+    add_to_antipasti_collection(to_, **collection_to_copy)
 
 
 def is_in_antipasti_collection(object_, key):
@@ -647,6 +663,7 @@ class BufferedFunction(object):
             return all(agent_spec['thread'].is_alive() for agent_spec in self._agent_spec)
 
     def put(self, item):
+        """Enqueues an item for execution."""
         self._put_count += 1
         self._inbound_queue.put(item)
 
@@ -654,7 +671,9 @@ class BufferedFunction(object):
         return self._put_count - self._get_count
 
     def get(self, timeout=None):
-        # Check if timeout is None.
+        # Check if timeout is None. If it is, try getting permanently,
+        # ocassionally checking for interrupts. If not, try getting only
+        # once with the given timeout.
         if timeout is not None:
             retry_getting = False
         else:
