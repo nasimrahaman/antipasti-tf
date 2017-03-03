@@ -1,6 +1,10 @@
 __author__ = "Nasim Rahaman"
 
 import threading
+import time
+
+import os
+import yaml
 
 from .. import backend as A
 from ..utilities import utils
@@ -170,7 +174,10 @@ class FeederRunner(object):
         return dqd
 
     def nq(self, session=None):
-        """Read data from feeder, apply preprocessor and enqueue. This function is executed by a single thread."""
+        """
+        Read data from feeder, apply preprocessor and enqueue.
+        This function is executed by a single thread.
+        """
         # Get debug logger function
         log = self.debug_logger.get_logger_for('nq')
 
@@ -200,7 +207,7 @@ class FeederRunner(object):
                         # (if the preproccessing is not done here, this shouldn't take long)
                         log("Trying to get batch from feeder")
                         data_batch = self.feeder.next()
-                        log("Got batch from feeder")
+                        log("Got batch with {} elements from feeder.".format(len(data_batch)))
                     except StopIteration:
                         log("StopIteration from feeder, breaking")
                         break
@@ -212,6 +219,8 @@ class FeederRunner(object):
                     log("Preprocessing")
                     # Preprocess data_batch
                     prepped_data_batch = self.preprocessor(data_batch)
+                    log("Obtained batch with {} elements after preprocessing.".
+                        format(len(prepped_data_batch)))
 
                     # Validate data_batch
                     assert len(prepped_data_batch) == self.num_inputs, \
@@ -285,4 +294,3 @@ class FeederRunner(object):
                 "`debug_logger` must be a `DebugLogger` object, " \
                 "got {} instead.".format(value.__class__.__name__)
             self._debug_logger = value
-
