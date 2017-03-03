@@ -16,6 +16,36 @@ class FeederRunner(object):
     """
     Class to enqueue Tensorflow feeders from a datafeeder.
     Loosely inspired by https://indico.io/blog/tensorflow-data-input-part2-extensions/
+
+    Usage:
+        # First define a python generator (for say MNIST)
+        def generator(inputs, labels):
+            # ...
+            for input, label in zip(inputs, labels):
+                # ...
+                # For e.g. MNIST:
+                #   input.shape = [batch_size, 28, 28, 1] and label.shape = [batch_size, 1, 1, 10],
+                # where labels is a one-hot matrix.
+                yield input, label
+
+        # Build feeder_runner
+        feeder_runner = FeederRunner(generator, num_threads=8, dtypes=[tf.float32, tf.float32],
+                                     input_shape=[[None, 28, 28, 1], [None, 1, 1, 10]])
+        # Get dequeue ops
+        input_tensor, label_tensor = feeder_runner.dq()
+
+        # Define model:
+        output_tensor = model(input_tensor)
+        loss = get_loss(output_tensor, label_tensor)
+        train_op = ...
+
+        # When ready to train, spool up the feeder threads
+        feeder_runner.start_start_runner()
+
+        # Run training op
+        with tf.Session() as sess:
+            sess.run(train_op)
+
     """
     def __init__(self, feeder, batch_size=1, preprocessor=None, dtypes=None, num_threads=1, num_epochs_per_thread=1,
                  queue_capacity=2000, min_num_elements_in_queue=0, coordinator=None,
