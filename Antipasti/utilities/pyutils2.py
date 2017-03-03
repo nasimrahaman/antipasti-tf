@@ -196,26 +196,34 @@ def get_parameter_tag(layer_id, parameter_name):
 # ---------------- INSTANCE-MANIPULATION-TOOLS ----------------
 
 
-def append_to_attribute(object_, attribute_name, attribute_object, delist=True):
+def append_to_attribute(object_, attribute_name, attribute_object, delist=True,
+                        prevent_duplicates=False):
     """
     If a given object has an attribute named `attribute_name`, which happens to be a list,
     this function appends `attribute_object` to it. If the attribute is not present,
     this function creates one. If it's present but not a list, it's made one. The `delist`
-    argument specifies if the first object appended is a list or simpy the given object
-    `attribute_object`.
+    argument specifies if the first object appended is a list or simply the given object
+    `attribute_object`. Finally, setting `prevent_duplicates` to true will result in
+    `attribute_object` not being appended to the list if it's in there already.
     """
+    _LISTLIKE = (list,)
+
     if hasattr(object_, attribute_name):
         # Object has the attribute
-        if isinstance(getattr(object_, attribute_name), list):
-            # Attribute is a list, so append to it directly
-            getattr(object_, attribute_name).append(attribute_object)
+        if isinstance(getattr(object_, attribute_name), _LISTLIKE):
+            # Attribute is a list, append to it directly if not in already
+            (py.appendunique if prevent_duplicates else list.append)\
+                (list(getattr(object_, attribute_name)), attribute_object)
         else:
-            # Attribute is not a list, it must be made one.
+            # Attribute is not listlike, it must be made one.
             attribute_list = py.obj2list(getattr(object_, attribute_name))
             # Append to the new attribute_list
-            attribute_list.append(attribute_object)
+            (py.appendunique if prevent_duplicates else list.append)\
+                (attribute_list, attribute_object)
             # Write attribute
-            setattr(object_, attribute_name, attribute_list)
+            setattr(object_,
+                    attribute_name,
+                    (py.delist(attribute_list) if delist else attribute_list))
     else:
         # Object does not have the attribute - set it.
         setattr(object_, attribute_name, (attribute_object if delist else [attribute_object]))
