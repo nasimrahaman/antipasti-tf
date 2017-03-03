@@ -76,6 +76,14 @@ class ModelApp(object):
         for what in reset_what:
             name_attribute_map[what] = None
 
+    def _assert_model_has_attribute(self, *attributes):
+        if hasattr(self, 'model'):
+            for attribute in attributes:
+                assert hasattr(getattr(self, 'model'), attribute), \
+                    self._stamp_string("The bound model must have an attribute {}. "
+                                       "To unbind the model, call the `unbind_model` method.".
+                                       format(attribute))
+
     def reset(self, *reset_what):
         raise NotImplementedError
 
@@ -114,8 +122,9 @@ class Loss(ModelApp):
         self._y = None
         self._yt = None
 
-        # Set model
-        self.model = model
+        # Apply model if provided
+        if model is not None:
+            self.apply(model)
 
         # Validate kwargs
         self._validate_kwargs(**kwargs)
@@ -137,6 +146,7 @@ class Loss(ModelApp):
     def model(self, value):
         if value is not self._model:
             self._model = value
+            self._assert_model_has_attribute('y')
             # Clear loss_vector and loss_scalar
             self.reset('loss_vector', 'loss_scalar')
 
@@ -219,6 +229,8 @@ class Loss(ModelApp):
     def yt(self):
         # If this instance is bound to a model, we use the yt defined in the model.
         if self.model is not None:
+            assert hasattr(self.model, 'yt'), \
+                self._stamp_string("The bound model must have an attribute 'yt'")
             return self.model.yt
         elif self._yt is None:
             # No model is provided. We make sure self._yt is not None.
@@ -288,6 +300,7 @@ class Loss(ModelApp):
         # Flatten
         flattened_y = A.image_tensor_to_matrix(self.y)
         flattened_yt = A.image_tensor_to_matrix(self.yt)
+        # FIXME This fails if weights is not defined
         flattened_weights = A.image_tensor_to_matrix(self.weights)
         # Evaluate loss and weight
         unweighted_loss_vector = self.method(flattened_y, flattened_yt)
@@ -333,7 +346,7 @@ class Loss(ModelApp):
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         self.model = model
-        py2.append_to_attribute(model, 'loss', self)
+        py2.append_to_attribute(model, 'losses', self)
 
     @staticmethod
     def apply_weights(tensor, weights):
@@ -344,7 +357,7 @@ class Loss(ModelApp):
         self.reset('loss_vector', 'loss_scalar')
 
     def attach_to_model_without_binding(self, model):
-        py2.append_to_attribute(model, 'loss', self)
+        py2.append_to_attribute(model, 'losses', self)
 
     def reset(self, *reset_what):
         _name_attribute_map = {'y': self._y,
@@ -391,7 +404,9 @@ class Regularizer(ModelApp):
         self._coefficients = None
         self._regularization_scalar = None
 
-        self.model = model
+        # Apply model if provided
+        if model is not None:
+            self.apply(model)
 
         # Validate kwargs
         self._validate_kwargs(**kwargs)
@@ -400,13 +415,11 @@ class Regularizer(ModelApp):
         self.method = kwargs.get('method')
         self.penalty_scalars = kwargs.get('penalty_scalars')
         self.coefficients = kwargs.get('coefficients')
-        self.aggregation_method = kwargs.get('aggregation_method', default='mean')
+        self.aggregation_method = kwargs.get('aggregation_method', 'mean')
         self.regularization_scalar = kwargs.get('regularization_scalar')
 
-        self.collection_read_access_granted = kwargs.get('grant_collection_read_access',
-                                                         default=True)
-        self.collection_write_access_granted = kwargs.get('grant_collection_write_access',
-                                                          default=False)
+        self.collection_read_access_granted = kwargs.get('grant_collection_read_access', True)
+        self.collection_write_access_granted = kwargs.get('grant_collection_write_access', False)
 
     @property
     def model(self):
@@ -416,6 +429,7 @@ class Regularizer(ModelApp):
     def model(self, value):
         if value is not self._model:
             self._model = value
+            self._assert_model_has_attribute('parameters')
             self.reset('penalty_scalars', 'regularization_scalar')
 
     @property
@@ -584,10 +598,10 @@ class Regularizer(ModelApp):
     def apply(self, model):
         """Get the loss given a model and write as model attribute."""
         self.model = model
-        py2.append_to_attribute(model, 'regularizer', self)
+        py2.append_to_attribute(model, 'regularizers', self, prevent_duplicates=True)
 
     def attach_to_model_without_binding(self, model):
-        py2.append_to_attribute(model, 'regularizer', self)
+        py2.append_to_attribute(model, 'regularizers', self, prevent_duplicates=True)
 
     def reset(self, *reset_what):
         _name_attribute_map = {'parameters': self._parameters,
@@ -638,7 +652,9 @@ class Objective(ModelApp):
         # Validate kwargs
         self._validate_kwargs(**kwargs)
 
-        self.model = model
+        # Apply model if provided
+        if model is not None:
+            self.apply(model)
 
         # Read kwargs
         self.collection_read_access_granted = kwargs.get('grant_collection_read_access', True)
@@ -646,9 +662,15 @@ class Objective(ModelApp):
         self.regularizers = kwargs.get('regularizers')
         self.objective_scalar = kwargs.get('objective_scalar')
         self.trainable_parameters = kwargs.get('trainable_parameters')
+        self.optimizer = kwargs.get('optimizer')
 
     @application
     def apply(self, model):
+        self.model = model
+        py2.append_to_attribute(model, 'objective', self, prevent_duplicates=True)
+        assert py.smartlen(model.objective) == 1, \
+            self._stamp_string("A model can only have 1 objectives. Provided model has {}.".
+                               format(py.smartlen(model.objective)))
         return model
 
     @property
@@ -659,12 +681,15 @@ class Objective(ModelApp):
     def model(self, value):
         if value is not self._model:
             self._model = value
+            # No hasattr assertion at this point, because the API allows losses and regularizers to
+            # be added after the Objective object is created.
             self.reset('objective_scalar', 'gradients')
 
     @property
     def losses(self):
         if self.model is not None:
-            return py.obj2list(self.model.loss)
+            self._assert_model_has_attribute('losses')
+            return py.obj2list(self.model.losses)
         elif self._losses is not None:
             return py.obj2list(self._losses)
         else:
@@ -689,7 +714,7 @@ class Objective(ModelApp):
         loss = get_loss(loss, _string_stamper=self._stamp_string)
         # Append to model losses if possible; otherwise, to self._losses
         if self.model is not None:
-            py2.append_to_attribute(self.model, 'loss', loss)
+            py2.append_to_attribute(self.model, 'losses', loss, prevent_duplicates=True)
         else:
             self._append_to_attribute('losses', loss)
         # Clear caches
@@ -698,7 +723,8 @@ class Objective(ModelApp):
     @property
     def regularizers(self):
         if self.model is not None:
-            return py.obj2list(self.model.regularizer)
+            self._assert_model_has_attribute('regularizers')
+            return py.obj2list(self.model.regularizers)
         elif self._regularizers is not None:
             return py.obj2list(self._regularizers)
         else:
@@ -723,7 +749,7 @@ class Objective(ModelApp):
         regularizer = get_regularizer(regularizer)
         # Append to model regs if possible; otherwise, to self._regularizers
         if self.model is not None:
-            py2.append_to_attribute(self.model, 'regularizer', regularizer)
+            py2.append_to_attribute(self.model, 'regularizers', regularizer)
         else:
             self._append_to_attribute('regularizers', regularizer)
         # Clear cahces
@@ -763,6 +789,7 @@ class Objective(ModelApp):
     @property
     def trainable_parameters(self):
         if self.model is not None:
+            self._assert_model_has_attribute('parameters')
             return py2.filter_antipasti_trainable(py.obj2list(self.model.parameters))
         elif self._trainable_parameters is not None:
             return py2.filter_antipasti_trainable(py.obj2list(self._trainable_parameters))
@@ -793,8 +820,9 @@ class Objective(ModelApp):
 
     @optimizer.setter
     def optimizer(self, value):
-        self._optimizer = value
-        self.reset('gradients')
+        if value is not None:
+            self._optimizer = value
+            self.reset('gradients')
 
     @property
     def gradients(self):
@@ -808,14 +836,14 @@ class Objective(ModelApp):
     def gradients(self, value):
         if value is None:
             return
-        _parameters = self.trainable_parameters
+        _trainable_parameters = self.trainable_parameters
         # Convert value to a list and validate
         value = py.obj2list(value)
-        assert len(value) == len(_parameters), \
+        assert len(value) == len(_trainable_parameters), \
             self._stamp_string("The number of gradient tensors must equal the number of "
                                "trainable parameters. Given `gradients` is a list of {} objects, "
                                "but there are {} trainable parameters."
-                               .format(len(value), len(_parameters)))
+                               .format(len(value), len(_trainable_parameters)))
         assert all([A.is_tf_tensor(val) for val in value]), \
             self._stamp_string("Provided `gradients` must be a list of tensorflow tensors.")
 
@@ -834,12 +862,7 @@ class Objective(ModelApp):
         _allowed_attributes = {'losses', 'regularizers'}
         if attribute_name in _allowed_attributes:
             private_attr_name = "_{}".format(attribute_name)
-            attribute = getattr(object_, private_attr_name)
-            if attribute is None:
-                attribute = []
-            assert isinstance(attribute, list)
-            attribute.append(object_)
-            setattr(self, private_attr_name, attribute)
+            py2.append_to_attribute(self, private_attr_name, object_, prevent_duplicates=True)
         else:
             raise RuntimeError(self._stamp_string("Can't append to attribute_name: '{}'. "
                                                   "Can only append to {}.".
@@ -856,13 +879,229 @@ class Objective(ModelApp):
 
 class Optimizer(ModelApp):
     """Abstract class for an optimizer."""
-    def __init__(self, model=None, **kwargs):
-        self.model = model
 
+    _ALLOWED_KWARGS = {'method',
+                       'objective',
+                       'trainable_parameters', 'gradients',
+                       'global_step', 'optimize_op', 'grant_collection_read_access'}
+
+    def __init__(self, model=None, **kwargs):
+        # Property containers
+        self._model = None
+        self._method = None
+        self._objective = None
+        self._trainable_parameters = None
+        self._gradients = None
+        self._global_step = None
+        self._optimize_op = None
+
+        # Validate kwargs
+        self._validate_kwargs(**kwargs)
+
+        # Apply model if provided
+        if model is not None:
+            self.apply(model)
+
+        # Read kwargs
+        self.collection_read_access_granted = kwargs.get('grant_collection_read_access', True)
+        # TODO
+
+    @property
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        if value is not None:
+            self._model = value
+            self._assert_model_has_attribute('objective')
+            # Reset
+            self.reset('trainable_parameters', 'gradients', 'optimize_op')
+
+    @property
+    def method(self):
+        return self._method
+
+    @method.setter
+    def method(self, value):
+        if value is None:
+            return
+        self._set_method(value)
+        self.reset('gradients')
+
+    def _set_method(self, method):
+        # TODO Parse from string if required
+        pass
+
+    @property
+    def objective(self):
+        if self.model is not None:
+            self._assert_model_has_attribute('objective')
+            # Try fetching from model if available
+            return self.model.objective
+        elif self._objective is not None:
+            # Fetch internal
+            return self._objective
+        else:
+            raise RuntimeError(self._stamp_string("Objective is yet to be defined."))
+
+    @objective.setter
+    def objective(self, value):
+        if value is None:
+            return
+        if self.model is not None:
+            # TODO add objective to model, but only if it's not present already
+            pass
+        else:
+            # TODO set private attribute
+            pass
+        pass
+
+    @property
+    def trainable_parameters(self):
+        # Read this if you're confused about the entire
+        # Objective.trainable_parameters and Optimizer.trainable_parameters business.
+
+        # This class works a bit differently than the others (i.e. Loss, Regularizer, Objective).
+        # The other classes depend only on the  model - so you either provide a model and let
+        # the machinery take care of things or you don't and set things on your own. This layer,
+        # however, also needs an Objective to function and the user can't get around defining one.
+        # Without further intervention, that means trainable_parameters are locked to that provided
+        # by objective, and if the user had to use different trainable_parameters for the optimizer,
+        # they would need to change `objective.trainable_parameters`. However, objective could be
+        # bound to a model and then setting it would have no effect. To get around that, we let
+        # users define trainable_parameters for the optimizer, which is why it gets higher priority.
+        # `objective.trainable_parameters` exists on as a fallback. Consequently, the user can
+        # choose to not bind model and define objective and trainable_parameters independently.
+
+        if self.model is not None:
+            # First priority goes to the model if bound
+            self._assert_model_has_attribute('objective')
+            return self.model.objective.trainable_parameters
+        if self._trainable_parameters is not None:
+            # Second priority goes to parameters provided explicitly
+            return self._trainable_parameters
+        elif self._objective is not None:
+            # Third priority goes to the set objective.
+            return self._objective.trainable_parameters
+        else:
+            # Nothing worked, raise
+            raise RuntimeError(self._stamp_string("`trainable_parameters` are yet to be defined. "
+                                                  "Consider binding a model, or setting "
+                                                  "`objective` or `trainable_parameters` attribute"
+                                                  " first."))
+
+    @trainable_parameters.setter
+    def trainable_parameters(self, value):
+        if value is None:
+            return
+        # See the bigass comment in trainable_parameters setter
+        if self.model is not None:
+            warn(self._stamp_string("Setting `trainable_parameters` has no effect when model is "
+                                    "bound. To unbind model, call the unbind_model method."))
+        else:
+            self._trainable_parameters = py2.filter_antipasti_trainable(py.obj2list(value))
+            # Gradients and optimize_op need to be recomputed
+            self.reset('gradients', 'optimize_op')
+
+    @property
+    def gradients(self):
+        # See comment in trainable_parameters getter - it also applies to gradients.
+        if self.model is not None:
+            # First priority to model
+            self._assert_model_has_attribute('objective')
+            return self.model.objective.gradients
+        elif self._gradients is not None:
+            # Second priority to gradients provided explicitly
+            return self._gradients
+        elif self._objective is not None:
+            return self._objective.gradients
+        else:
+            # Nothing worked, raise
+            raise RuntimeError(self._stamp_string("`gradients` are yet to be defined. "
+                                                  "Consider binding a model, or setting "
+                                                  "`objective` or `gradients` attribute"
+                                                  " first."))
+
+    @gradients.setter
+    def gradients(self, value):
+        if value is None:
+            return
+        # See comment in trainable_parameters getter - it applies to gradients as well.
+        if self.model is not None:
+            warn(self._stamp_string("Setting `trainable_parameters` has no effect when model is "
+                                    "bound. To unbind model, call the unbind_model method."))
+        else:
+            # Validate
+            _trainable_parameters = self.trainable_parameters
+            # Convert value to a list and check whether it's compatible with `trainable_parameters`
+            value = py.obj2list(value)
+            assert len(value) == len(_trainable_parameters), \
+                self._stamp_string("The number of gradient tensors must equal the number of "
+                                   "trainable parameters. Given `gradients` is a list of {} "
+                                   "objects, but there are {} trainable parameters."
+                                   .format(len(value), len(_trainable_parameters)))
+            assert all([A.is_tf_tensor(val) for val in value]), \
+                self._stamp_string("Provided `gradients` must be a list of tensorflow tensors.")
+            # Set attribute
+            self._gradients = value
+            # Reset
+            self.reset('optimize_op')
+
+    @property
+    def global_step(self):
+        if self._global_step is not None:
+            # global step is locally defined.
+            return self._global_step
+        elif self.collection_read_access_granted and A.get_global_variable('global_step') is not None:
+            # if global step is defined in tf space
+            return A.get_global_variable('global_step')
+        else:
+            self._global_step = self._get_global_step()
+            return self._global_step
+
+    @global_step.setter
+    def global_step(self, value):
+        if value is None:
+            return
+        self._global_step = value
+
+    @staticmethod
+    def _get_global_step():
+        return A.variable(value=0, shape=[], name='global_step', dtype='int64', trainable=False)
+
+    @property
+    def optimize_op(self):
+        if self._optimize_op is not None:
+            return self._optimize_op
+        else:
+            self._optimize_op = self._get_optimize_op()
+            return self._optimize_op
+
+    @optimize_op.setter
+    def optimize_op(self, value):
+        if value is None:
+            return
+        self._optimize_op = value
+
+    def _get_optimize_op(self):
+        grads_and_vars = [(grad, var)
+                          for grad, var in zip(self.gradients, self.trainable_parameters)]
+        optimize_op = self.method.apply_gradients(grads_and_vars=grads_and_vars,
+                                                  global_step=self.global_step)
+        return optimize_op
+
+    def reset(self, *reset_what):
+        _name_attribute_map = {'objective': self._objective,
+                               'trainable_parameters': self._trainable_parameters,
+                               'gradients': self._gradients,
+                               'optimize_op': self._optimize_op}
+        self._reset_attributes(reset_what, _name_attribute_map)
 
     @application
     def apply(self, model=None):
         """Get the training op and write as model attribute."""
+        # TODO
         return model
 
 

@@ -147,6 +147,11 @@ def get_all_global_variables(as_name_variable_dict=False):
         return {var.name: var for var in tf.global_variables()}
 
 
+def get_global_variable(name, default=None):
+    """Gets the global variable given a name."""
+    return get_all_global_variables(as_name_variable_dict=True).get(name, default)
+
+
 def run(fetches, feed_dict=None, options=None, run_metadata=None, session=None,
         initialize_variables=False):
     session = Session.session if session is None else session
@@ -548,13 +553,13 @@ def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_supermana
     with context_supermanager.manage():
         if make:
             # Set up keyword args for the tf.Variable call
-            tf_variable_kwds.update({'initial_value': to_tf_tensor(value, dtype=dtype),
+            tf_variable_kwds.update({'initial_value': to_tf_tensor(value, dtype=to_tf_dtype(dtype)),
                                      'name': name})
             # Make variable
             var = tf.Variable(dtype=to_tf_dtype(dtype), **tf_variable_kwds)
         elif get:
             # Get variable from scope
-            var = tf.get_variable(name, shape=shape, dtype=dtype, **tf_variable_kwds)
+            var = tf.get_variable(name, shape=shape, dtype=to_tf_dtype(dtype), **tf_variable_kwds)
         else:
             raise RuntimeError("Either value or name must be provided.")
 
@@ -562,7 +567,7 @@ def variable(value=None, name=None, shape=None, dtype=_FLOATX, context_supermana
     var._antipasti_set_value = types.MethodType(set_value, var)
     var._antipasti_get_value = types.MethodType(get_value, var)
     var._antipasti_collection = {}
-    var._antipasti_name = antipasti_name
+    var._antipasti_name = antipasti_name if antipasti_name is not None else name
     return var
 
 
