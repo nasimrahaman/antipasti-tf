@@ -193,6 +193,18 @@ def get_parameter_tag(layer_id, parameter_name):
     return "[LayerID:{}][{}]".format(layer_id, parameter_name)
 
 
+def autoname_layer_or_model(layer_or_model, _string_stamper=None):
+    assert not layer_or_model.name_is_user_defined, \
+        _string_stamper("Autonaming failed: layer or model name was found to"
+                        " be user defined as '{}'.".format(layer_or_model.name))
+    # Get class prefix
+    class_prefix = layer_or_model.__class__.__name__.lower()
+    # Get object id
+    object_id = str(id(layer_or_model))
+    # Make name and return
+    return "{}_{}".format(class_prefix, object_id)
+
+
 # ---------------- INSTANCE-MANIPULATION-TOOLS ----------------
 
 
