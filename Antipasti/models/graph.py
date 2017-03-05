@@ -1,4 +1,5 @@
 from ..models import Model
+from ..utilities import graphutils as gutils
 
 try:
     import networkx as nx
@@ -10,6 +11,16 @@ except ImportError:
 class LayerGraph(Model):
     """Class to implement arbitrary graphs of layers with NetworkX."""
     def __init__(self, graph=None, input_shape=None, name=None):
+        """
+        :type graph: networkx.DiGraph
+        :param graph: The network as a networkx graph.
+
+        :type input_shape: list or list of list
+        :param input_shape: Input shape.
+
+        :type name: str
+        :param name: Name of the model.
+        """
         # Initialize superclass
         super(LayerGraph, self).__init__(name=name)
 
@@ -29,7 +40,7 @@ class LayerGraph(Model):
     @graph.setter
     def graph(self, value):
         # TODO
-        pass
+        self._graph = value
 
     def write_to_cache(self, name, value):
         self._caches.update({name: value})
@@ -44,6 +55,10 @@ class LayerGraph(Model):
         """Tell the LayerGraph object that the graph has changed (invalidates all caches)."""
         for what in self._graph_has_changed_since_the_last_update_of.keys():
             self._graph_has_changed_since_the_last_update_of[what] = True
+
+    @property
+    def all_node_names(self):
+        return self.graph.nodes
 
     @property
     def input_layers(self):
@@ -79,8 +94,19 @@ class LayerGraph(Model):
                           `LayerGraph`s.
 
         :type next_: str or Antipasti.layers.core.Layer or Antipasti.models.graph.LayerGraph or list
-        :param next_: Previous layer(s). Can be a list of strings or `Layer`s or `LayerGraph`s.
+        :param next_: Next layer(s). Can be a list of strings or `Layer`s or `LayerGraph`s.
         """
+        # TODO
+        # Get layer name
+        node_name = gutils.find_a_name(layer_or_model=layer, all_names=self.all_node_names,
+                                       given_name=name)
+        # Add layer to graph
+        self.graph.add_node(node_name, layer_or_model=layer)
+        # Add nodes before and after
+        if previous_ is not None:
+            if isinstance(previous_, str):
+                pass
+            # TODO substitute for isinstance
         # TODO
         pass
 
