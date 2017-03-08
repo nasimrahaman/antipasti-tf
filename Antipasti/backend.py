@@ -1063,7 +1063,7 @@ def sorensen_dice_distance(prediction, target, weights=None, with_logits=True, a
     :return: Sorensen dice distance.
     """
     assert aggregation_mode == 'sum', \
-        "Aggregation mode is well defined for the Sorensen-Dice coefficient (= 'sum'). " \
+        "Aggregation mode is predefined for the Sorensen-Dice coefficient (= 'sum'). " \
         "Got {} instead.".format(aggregation_mode)
     assert aggregate, \
         "Sorensen-Dice coefficient aggregates by definition, " \
@@ -1073,17 +1073,89 @@ def sorensen_dice_distance(prediction, target, weights=None, with_logits=True, a
         if with_logits:
             # Pass through a sigmoid
             prediction = sigmoid(prediction)
+
         if weights is not None:
             # Weight prediction and targets
             prediction = multiply(weights, prediction, name='prediction_weighting')
             target = multiply(weights, target, name='target_weighting')
+
         # Compute dice coefficient
         sorensen_dice_coefficient = 2 * divide(reduce_(multiply(prediction, target), mode='sum'),
                                                reduce_(pow(prediction, 2), mode='sum') +
                                                reduce_(pow(target, 2), mode='sum'))
+
         # Compute distance as 1 - coeff
         distance = 1 - sorensen_dice_coefficient
         # Done.
+        return distance
+
+
+def tversky_distance(prediction, target, weights=None, alpha=1., beta=1., with_logits=True,
+                     aggregate=True, aggregation_mode='sum'):
+    """
+    Computes the softened Tversky distance given a `prediction` and a `target`.
+    It is $(1 - TI)$, where TI$ is the Tversky index.
+
+    It's usually assumed that `prediction` and `target` are binary, but this function does
+    not require them to be. If `with_logits` is set to true, an elementwise sigmoid will first be
+    applied to the predictions. The keyword `aggregate` has to be true by definition of the
+    Tversky index.
+
+    :type prediction: tensorflow.Tensor
+    :param prediction: Prediction tensor.
+                       Values must be between 0 and 1 if `with_logits` is set to False.
+
+    :type target: tensorflow.Tensor
+    :param target: Target tensor.
+
+    :type weights: tensorflow.Tensor
+    :param weights: Pixel-wise weight tensor. Should have the same shape as `prediction`
+                    or `target`.
+
+    :type with_logits: bool
+    :param with_logits: Whether `prediction` is a tensor of logits, in which case it will be
+                        passed through a sigmoid first.
+
+    :type aggregate: bool
+    :param aggregate: Whether to aggregate to a scalar. This has to be true.
+
+    :type aggregation_mode: str
+    :param aggregation_mode: If `aggregate`, the aggregation (reduction) mode to use.
+                             This is defined by the coefficient itself and can not be changed.
+
+    :return: Tversky distance.
+    """
+    assert aggregation_mode == 'sum', \
+        "Aggregation mode is predefined for the Tversky distance (= 'sum'). " \
+        "Got {} instead.".format(aggregation_mode)
+    assert aggregate, \
+        "Tversky distance aggregates by definition, " \
+        "cannot have the aggregate keyword set to `False`."
+
+    with ContextSupermanager(name_scope='tversky_distance').manage():
+        if with_logits:
+            # Pass through a sigmoid
+            prediction = sigmoid(prediction)
+
+        if weights is not None:
+            # Weight prediction and targets
+            prediction = multiply(weights, prediction, name='prediction_weighting')
+            target = multiply(weights, target, name='target_weighting')
+
+        # Put together tversky index
+        y_times_yt = reduce_(multiply(prediction, target), mode='sum')
+        y_times_one_minus_yt = reduce_(multiply(prediction, 1. - target), mode='sum')
+        one_minus_y_times_yt = reduce_(multiply(1. - prediction, target), mode='sum')
+
+        tversky_index_numerator = y_times_yt
+        tversky_index_denominator = y_times_yt + \
+                                    alpha * y_times_one_minus_yt + \
+                                    beta * one_minus_y_times_yt
+        tversky_index = divide(tversky_index_numerator, tversky_index_denominator)
+
+        # Compute distance as 1 - tversky index
+        distance = 1. - tversky_index
+        # Done
         return distance
 
 
