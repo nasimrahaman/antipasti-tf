@@ -204,13 +204,18 @@ def consolidate_context_managers(device=None, variable_scope=None, extra_context
 
 class ContextSupermanager(object):
     """Class to help with managing the usual context managers in tensorflow."""
-    def __init__(self, device=None, variable_scope=None, other_context_managers=None):
+    def __init__(self, device=None, variable_scope=None, name_scope=None,
+                 other_context_managers=None):
         """
         :type device: str
         :param device: Device to use, e.g. 'gpu0' or '/gpu:0'
 
         :type variable_scope: str or list of str or any
         :param variable_scope: (List of) variable scopes. If strings are provided, they're wrapped in
+                               tf.variable_scope
+
+        :type name_scope: str or list of str or any
+        :param name_scope: (List of) name scopes. If strings are provided, they're wrapped in
                                tf.variable_scope
 
         :type other_context_managers: list
@@ -220,16 +225,18 @@ class ContextSupermanager(object):
         self._device = None
         self._scope_yields = None
         self._variable_scope = None
+        self._name_scope = None
         self._other_context_managers = None
 
         # Attach meta
         self.device = device
         self.variable_scope = variable_scope
+        self.name_scope = name_scope
         self.other_context_managers = other_context_managers
 
     def get_managers(self, parameter_tag=None, layer_id=None, device=None, variable_scope=None,
-                     other_context_managers=None, reuse=None, reuse_variable_scope=None,
-                     reuse_layer_variable_scope=None):
+                     name_scope=None, other_context_managers=None, reuse=None,
+                     reuse_variable_scope=None, reuse_layer_variable_scope=None):
         """
         :type parameter_tag: str or NoneType
         :param parameter_tag: Parameter tag of the layer for which the manager is being retrieved.
@@ -299,6 +306,15 @@ class ContextSupermanager(object):
         variable_scope = [tf.variable_scope(scope, reuse=reuse_variable_scope) if isinstance(scope, str) else scope
                           for scope in py.obj2list(variable_scope)]
 
+        # Get extra name scopes if provided
+        if name_scope is None:
+            # Read from attribute
+            name_scope = self.name_scope if self.name_scope is not None else []
+
+        # Support for variable_scope passed as a string or a list of strings
+        name_scope = [tf.name_scope(scope) if isinstance(scope, str) else scope
+                      for scope in py.obj2list(name_scope)]
+
         # Get the remaining context managers
         other_context_managers = py.obj2list(other_context_managers) if other_context_managers is not None else []
 
@@ -306,6 +322,7 @@ class ContextSupermanager(object):
         all_context_managers = OrderedDict([('device_scope', device),
                                             ('layer_variable_scope', layer_variable_scope),
                                             ('variable_scope', variable_scope),
+                                            ('name_scope', name_scope),
                                             ('other_context_managers', other_context_managers)])
 
         # Return
@@ -332,6 +349,20 @@ class ContextSupermanager(object):
             value = py.obj2list(value)
         # Done.
         self._variable_scope = value
+
+    @property
+    def name_scope(self):
+        return self._name_scope
+
+    @name_scope.setter
+    def name_scope(self, value):
+        # Parse value (convert to list)
+        if value is None:
+            value = []
+        else:
+            value = py.obj2list(value)
+        # Done.
+        self._name_scope = value
 
     @property
     def other_context_managers(self):
@@ -361,8 +392,8 @@ class ContextSupermanager(object):
 
     @contextmanager
     def manage(self, parameter_tag=None, layer_id=None, device=None, variable_scope=None,
-               other_context_managers=None, reuse=None, reuse_layer_variable_scope=None,
-               reuse_variable_scope=None):
+               name_scope=None, other_context_managers=None, reuse=None,
+               reuse_layer_variable_scope=None, reuse_variable_scope=None):
 
         with ExitStack() as stack:
             # We're gonna store all mangers yields in an ordered dict, which will in turn be (indirectly) yielded by
@@ -371,6 +402,7 @@ class ContextSupermanager(object):
             _manager_yields = OrderedDict([])
             for manager_group, managers in self.get_managers(parameter_tag=parameter_tag, layer_id=layer_id,
                                                              device=device, variable_scope=variable_scope,
+                                                             name_scope=name_scope,
                                                              other_context_managers=other_context_managers,
                                                              reuse=reuse,
                                                              reuse_layer_variable_scope=reuse_layer_variable_scope,
@@ -799,6 +831,10 @@ def multiply(*tensors, **kwargs):
     return reduce(lambda x, y: tf.mul(x, y, name=op_name), tensors)
 
 
+def pow(tensor1, tensor2, name=None):
+    return tf.pow(tensor1, tensor2, name=name)
+
+
 def equal(tensor1, tensor2, as_dtype=None, name=None):
     """
     Equivalent to `tensorflow.equal` when `as_dtype` is None; otherwise, the output from
@@ -963,7 +999,7 @@ def binary_cross_entropy(prediction, target, weights=None, with_logits=True, agg
     :type aggregation_mode: str
     :param aggregation_mode: If `aggregate`, the aggregation (reduction) mode to be used.
 
-    :return: Binary cross entropy vector
+    :return: Binary cross entropy vector or scalar
     """
     # Flatten to matrix
     prediction_flattened = image_tensor_to_matrix(prediction)
@@ -989,6 +1025,66 @@ def binary_cross_entropy(prediction, target, weights=None, with_logits=True, agg
         raise NotImplementedError("Binary cross entropy without logits is yet to be implemented.")
     # Done.
     return bce
+
+
+def sorensen_dice_distance(prediction, target, weights=None, with_logits=True, aggregate=True,
+                           aggregation_mode='sum'):
+    """
+    Computes the softened Sorensen-Dice distance given a `prediction` and a `target`.
+    It is $(1 - SDC)$, where $SDC$ is the Sorensen-Dice coefficient.
+
+    It's usually assumed that `prediction` and `target` are binary, but this function does
+    not require them to be. If `with_logits` is set to true, an elementwise sigmoid will first be
+    applied to the predictions. The keyword `aggregate` has to be true by definition of the
+    coefficient.
+
+    :type prediction: tensorflow.Tensor
+    :param prediction: Prediction tensor.
+                       Values must be between 0 and 1 if `with_logits` is set to False.
+
+    :type target: tensorflow.Tensor
+    :param target: Target tensor.
+
+    :type weights: tensorflow.Tensor
+    :param weights: Pixel-wise weight tensor. Should have the same shape as `prediction`
+                    or `target`.
+
+    :type with_logits: bool
+    :param with_logits: Whether `prediction` is a tensor of logits, in which case it will be
+                        passed through a sigmoid first.
+
+    :type aggregate: bool
+    :param aggregate: Whether to aggregate to a scalar. This has to be true.
+
+    :type aggregation_mode: str
+    :param aggregation_mode: If `aggregate`, the aggregation (reduction) mode to use.
+                             This is defined by the coefficient itself and can not be changed.
+
+    :return: Sorensen dice distance.
+    """
+    assert aggregation_mode == 'sum', \
+        "Aggregation mode is well defined for the Sorensen-Dice coefficient (= 'sum'). " \
+        "Got {} instead.".format(aggregation_mode)
+    assert aggregate, \
+        "Sorensen-Dice coefficient aggregates by definition, " \
+        "cannot have the aggregate keyword set to `False`."
+
+    with ContextSupermanager(name_scope='sorensen_dice_distance').manage():
+        if with_logits:
+            # Pass through a sigmoid
+            prediction = sigmoid(prediction)
+        if weights is not None:
+            # Weight prediction and targets
+            prediction = multiply(weights, prediction, name='prediction_weighting')
+            target = multiply(weights, target, name='target_weighting')
+        # Compute dice coefficient
+        sorensen_dice_coefficient = 2 * divide(reduce_(multiply(prediction, target), mode='sum'),
+                                               reduce_(pow(prediction, 2), mode='sum') +
+                                               reduce_(pow(target, 2), mode='sum'))
+        # Compute distance as 1 - coeff
+        distance = 1 - sorensen_dice_coefficient
+        # Done.
+        return distance
 
 
 def binary_accuracy(prediction, target, prediction_threshold=0.5, target_threshold=0.5):
