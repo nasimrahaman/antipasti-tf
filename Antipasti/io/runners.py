@@ -144,7 +144,8 @@ class FeederRunner(object):
     def queue(self):
         # Make queue if it's not made already
         if self._queue is None:
-            return self.make_queue()
+            self.make_queue()
+            return self._queue
         else:
             return self._queue
 
