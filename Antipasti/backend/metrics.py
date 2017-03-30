@@ -119,10 +119,11 @@ def sorensen_dice_distance(prediction, target, weights=None, with_logits=True, a
             prediction = multiply(weights, prediction, name='prediction_weighting')
             target = multiply(weights, target, name='target_weighting')
 
-        # Compute dice coefficient
+        # Compute dice coefficient with safe divide
         sorensen_dice_coefficient = 2 * divide(reduce_(multiply(prediction, target), mode='sum'),
                                                reduce_(pow(prediction, 2), mode='sum') +
-                                               reduce_(pow(target, 2), mode='sum'))
+                                               reduce_(pow(target, 2), mode='sum'),
+                                               safe=True)
 
         # Compute distance as 1 - coeff
         distance = 1 - sorensen_dice_coefficient
@@ -191,7 +192,7 @@ def tversky_distance(prediction, target, weights=None, alpha=1., beta=1., with_l
         tversky_index_denominator = y_times_yt + \
                                     alpha * y_times_one_minus_yt + \
                                     beta * one_minus_y_times_yt
-        tversky_index = divide(tversky_index_numerator, tversky_index_denominator)
+        tversky_index = divide(tversky_index_numerator, tversky_index_denominator, safe=True)
 
         # Compute distance as 1 - tversky index
         distance = 1. - tversky_index

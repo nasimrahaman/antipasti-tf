@@ -866,13 +866,14 @@ def greater(tensor1, tensor2, as_dtype=None, name=None):
                     name=(None if name is None else '{}_cast'.format(name)))
 
 
-def divide(tensor1, tensor2, divtype=None, name=None):
+def divide(tensor1, tensor2, divtype=None, safe=False, eps=10e-8, name=None):
     """
     Divides tensor1 by tensor2. The argument `divtype` (a str or None) specifies the type of
     division to be carried out, and can be one of {'floor', 'true', 'real', 'truncate', 'floor_'}.
     These select the corresponding tensorflow division functions. Leaving divtype to None results
     in the division function being tensorflow.divide, which computes python style division of
-    tensor1 by tensor2.
+    tensor1 by tensor2. If `safe` is set to true, a small `eps` is added to the denominator to
+    prevent NaNs.
     """
     _ALLOWED_DIVTYPES_TO_DIVFUNCS = {None: tf.divide,
                                      'floor': tf.floordiv,
@@ -886,7 +887,10 @@ def divide(tensor1, tensor2, divtype=None, name=None):
         "of the following: {}. Got a {} instead.".\
             format(_ALLOWED_DIVTYPES_TO_DIVFUNCS.keys(), divtype.__class__.__name__)
 
-    return _ALLOWED_DIVTYPES_TO_DIVFUNCS.get(divtype)(tensor1, tensor2, name=name)
+    if not safe:
+        return _ALLOWED_DIVTYPES_TO_DIVFUNCS.get(divtype)(tensor1, tensor2, name=name)
+    else:
+        return _ALLOWED_DIVTYPES_TO_DIVFUNCS.get(divtype)(tensor1, tensor2 + eps, name=name)
 
 
 def log(tensor, name=None):
