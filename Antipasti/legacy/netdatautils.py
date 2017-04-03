@@ -4,6 +4,7 @@ __author__ = "Nasim Rahaman"
 __doc__ = """Utility functions to help with data logistics."""
 
 import numpy as np
+import os
 from scipy.io import loadmat
 from scipy.ndimage.morphology import distance_transform_edt as edt
 import h5py as h5
@@ -103,7 +104,8 @@ def fromh5(path, datapath=None, dataslice=None, asnumpy=True, preptrain=None):
     :type preptrain: prepkit.preptrain
     :param preptrain: Train of preprocessing functions to be applied on the dataset before being returned
     """
-
+    # Check if path exists (thanks Lukas!)
+    assert os.path.exists(path), "Path {} does not exist.".format(path)
     # Init file
     h5file = h5.File(path)
     # Init dataset
