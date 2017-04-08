@@ -7,8 +7,19 @@ from collections import OrderedDict
 
 
 class NetworkGraph(nx.DiGraph):
+    """A NetworkX DiGraph, except that node and edge ordering matters."""
     node_dict_factory = OrderedDict
     adjlist_dict_factory = OrderedDict
+
+
+class ConnectivitySpec(object):
+    """
+    Specifies an arbitrary connection between (groups of) layers in a `NetworkGraph`.
+    This warrants its own class because any of the layers may have an arbitrary number of
+    inputs and outputs.
+    """
+    # TODO
+    pass
 
 
 # ---- DECORATORS
@@ -46,3 +57,11 @@ def find_a_name(layer, all_names, given_name=None, _string_stamper=None):
         # layer or model has no name, so we need to find one.
         return py2.autoname_layer_or_model(layer, given_name=given_name,
                                            _string_stamper=_string_stamper)
+
+
+def split_address_to_node_name_and_port(address, separator='::'):
+    if separator not in address:
+        # address is the node_name, and port is 0
+        return address, 0
+    else:
+        return tuple(address.split('::'))
