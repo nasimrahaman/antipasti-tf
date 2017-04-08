@@ -193,16 +193,35 @@ def get_parameter_tag(layer_id, parameter_name):
     return "[LayerID:{}][{}]".format(layer_id, parameter_name)
 
 
-def autoname_layer_or_model(layer_or_model, _string_stamper=None):
-    assert not layer_or_model.name_is_user_defined, \
-        _string_stamper("Autonaming failed: layer or model name was found to"
-                        " be user defined as '{}'.".format(layer_or_model.name))
+def autoname_layer_or_model(layer=None, given_name=None, force_postfix=False,
+                            _string_stamper=lambda s: s):
+    # Check if the function has a library of used names. Make one if it doesn't.
+    if not hasattr(autoname_layer_or_model, 'used_names'):
+        autoname_layer_or_model.used_names = {}
+    # Validate
+    if hasattr(layer, 'name_is_user_defined'):
+        assert not layer.name_is_user_defined, \
+            _string_stamper("Autonaming failed: layer or model name was found to"
+                            " be user defined as '{}'.".format(layer.name))
+    assert given_name is None or isinstance(given_name, str), \
+        _string_stamper("Given name must be a string.")
+    assert not (layer is None and given_name is None), \
+        _string_stamper("Either a `layer` or a `given_name` must be "
+                        "provided for autonaming to work.")
     # Get class prefix
-    class_prefix = layer_or_model.__class__.__name__.lower()
-    # Get object id
-    object_id = str(id(layer_or_model))
-    # Make name and return
-    return "{}_{}".format(class_prefix, object_id)
+    name_prefix = layer.__class__.__name__.lower() if given_name is None else given_name
+    # Get object id as the id of the layer if it's given
+    if layer is not None:
+        object_id = str(id(layer))
+    else:
+        # python id's are pretty big, so chances of collision are slim #yolo
+        object_id = autoname_layer_or_model.used_names.get(name_prefix, 0)
+        autoname_layer_or_model.used_names.update({name_prefix: object_id + 1})
+    # Make name and return. If object_id is 0, there's no need to postfix
+    if object_id != 0 or force_postfix:
+        return "{}_{}".format(name_prefix, object_id)
+    else:
+        return name_prefix
 
 
 # ---------------- INSTANCE-MANIPULATION-TOOLS ----------------
