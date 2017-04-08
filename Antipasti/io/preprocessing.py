@@ -6,7 +6,7 @@ import numpy as np
 from ..legacy import pykit as py
 
 
-def as_function_over_axes(axes):
+def as_function_over_axes(axes, dtype=None):
     """
     Returns a decorator that applies a provided input function only over the given `axes` of the
     batch tensor. The function to be decorated must take one or more arguments and return exactly
@@ -33,6 +33,9 @@ def as_function_over_axes(axes):
         ```
     :type axes: list or tuple
     :param axes: Axes to distribute the function over.
+
+    :type dtype: str
+    :param dtype: Datatype of the output.
 
     :return: Decorator to apply a function over the given axes.
     """
@@ -61,7 +64,7 @@ def as_function_over_axes(axes):
                                             for dim_num in range(batch_ndim)])
 
             # Preallocate output(s)
-            batches_out = [np.zeros_like(batch_in) for batch_in in batches_in]
+            batches_out = [np.zeros_like(batch_in, dtype=dtype) for batch_in in batches_in]
 
             # Start main loop
             for _slice in slices_to_loop_over:
