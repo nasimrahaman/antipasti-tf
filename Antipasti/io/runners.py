@@ -238,7 +238,8 @@ class FeederRunner(object):
                         # (if the preproccessing is not done here, this shouldn't take long)
                         log("Trying to get batch from feeder")
                         data_batch = self.feeder.next()
-                        log("Got batch with {} elements from feeder.".format(len(data_batch)))
+                        log("Got batch with {} elements of shapes {} from feeder.".
+                            format(len(data_batch), [_data_batch.shape for _data_batch in data_batch]))
                     except StopIteration:
                         log("StopIteration from feeder, breaking")
                         break
@@ -250,8 +251,9 @@ class FeederRunner(object):
                     log("Preprocessing")
                     # Preprocess data_batch
                     prepped_data_batch = self.preprocessor(data_batch)
-                    log("Obtained batch with {} elements after preprocessing.".
-                        format(len(prepped_data_batch)))
+                    log("Obtained batch with {} elements of shapes {} after preprocessing.".
+                        format(len(prepped_data_batch),
+                               [_data_batch.shape for _data_batch in prepped_data_batch]))
 
                     # Validate data_batch
                     assert len(prepped_data_batch) == self.num_inputs, \
