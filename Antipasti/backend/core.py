@@ -769,6 +769,40 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
+def shuffle_tensor(tensor, axis=0, seed=None, name=None):
+    """
+    Shuffles a `tensor` along a given `axis`.
+    For `axis = 0`, this is equivalent to tensorflow.random_shuffle.
+    """
+    # Save a transpose op if axis is 0 already
+    if axis == 0:
+        return tf.random_shuffle(tensor, seed=seed, name=name)
+    else:
+        # The axis we need to shuffle along must be the first axis. Transpose accordingly.
+        tensor_ndim = ndim(tensor)
+        assert tensor_ndim is not None, "Can't shuffle a tensor along an axis != 0 if it's ndim is " \
+                                        "not known."
+        # Figure out how to transpose the tensor
+        how_to_transpose = range(tensor_ndim)
+        # Allow axis to be -1.
+        axis = how_to_transpose[-1] if axis == -1 else axis
+        assert axis in how_to_transpose, \
+            "Can't shuffle along axis {} if the tensor is {}-D.".format(axis, tensor_ndim)
+        how_to_transpose[axis], how_to_transpose[0] = how_to_transpose[0], how_to_transpose[axis]
+        transposed_tensor = transpose(tensor, perm=how_to_transpose)
+        # Shuffle
+        shuffled_transposed_tensor = tf.random_shuffle(transposed_tensor, seed=seed, name=name)
+        # Undo transpose
+        shuffled_tensor = transpose(shuffled_transposed_tensor, perm=how_to_transpose)
+        # Done.
+        return shuffled_tensor
+
+
+def random_shuffle(tensor, seed=None, name=None):
+    """Alias for tensorflow.random_shuffle."""
+    return shuffle_tensor(tensor, seed=seed, name=name)
+
+
 def expand_dims(tensor, dim, name=None):
     """Alias for tensorflow.expand_dims."""
     return tf.expand_dims(tensor, dim, name=name)
