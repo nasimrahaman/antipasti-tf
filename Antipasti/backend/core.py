@@ -867,7 +867,7 @@ def reduce_(tensor, mode, axis=None, keep_dims=False, name=None):
 
 def multiply(*tensors, **kwargs):
     op_name = kwargs.get('name')
-    return reduce(lambda x, y: tf.mul(x, y, name=op_name), tensors)
+    return reduce(lambda x, y: tf.multiply(x, y, name=op_name), tensors)
 
 
 def pow(tensor1, tensor2, name=None):
