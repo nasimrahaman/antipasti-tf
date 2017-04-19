@@ -16,7 +16,7 @@ For the following, let's assume that our model is called `network`.
   This supports constructs like list comprehensions and reductions. 
   In addition, we define a `*` operation to stack layers laterally, 
   so you could define an [inception module](http://wikicoursenote.com/wiki/File:I1.png) like: 
-  `previous + conv(...) * conv(...) * conv(...) * pool(...) + concat() + next`. 
+  `previous + conv(...) * conv(...) * conv(...) * pool(...) + next`. 
   For predefined sub-networks as modules, a [U-Net](https://lmb.informatik.uni-freiburg.de/people/ronneber/u-net/) could look like: 
   `network = module_1 + (module_2 + module_3 * id() + module_4) * id() + module_5`.
   Slicing would be defined as expected, e.g. `subnetwork = network[3:5]` 
@@ -31,7 +31,7 @@ For the following, let's assume that our model is called `network`.
 ## Why not [Keras](https://github.com/fchollet/keras), a mature library with eloquent code?
 
 If you're reading this, we assume you're somewhat familiar with Keras. 
-Without further ado, there are three reasons:   
+Without further ado, there are four reasons:   
    
    * Keras is [functional](https://keras.io/getting-started/functional-api-guide/) for the most part. The functional API can be 
      powerful for constructing models, but altering a model after it 
