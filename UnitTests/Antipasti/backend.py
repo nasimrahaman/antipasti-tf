@@ -48,6 +48,20 @@ def test_shuffle_tensor():
     assert any([np.allclose(numerical_output, output)
                 for numerical_output in possible_numerical_outputs])
 
+    # Check whether the gradients can be computed
+    tensor = A.placeholder()
+    shuffled_tensor = A.shuffle_tensor(tensor, differentiable=True)
+    grad_tensor = A.gradients(objective=A.reduce_(shuffled_tensor, 'mean'), with_respect_to=tensor)
+    numerical_grad_tensor = A.run(grad_tensor, {tensor: numerical_tensor})
+    assert numerical_grad_tensor.values.shape == numerical_tensor.shape
+
+    # Check whether the lookup error is raised otherwise
+    with pytest.raises(LookupError):
+        tensor = A.placeholder()
+        shuffled_tensor = A.shuffle_tensor(tensor, differentiable=False)
+        grad_tensor = A.gradients(objective=A.reduce_(shuffled_tensor, 'mean'),
+                                  with_respect_to=tensor)
+
     # Case 3: Unknown ndim, axis = -1
     with pytest.raises(AssertionError):
         # Make tensor and op

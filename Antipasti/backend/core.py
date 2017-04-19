@@ -798,14 +798,28 @@ def concatenate(tensors, axis=0, name='concat'):
     return tf.concat(axis, tensors, name=name)
 
 
-def shuffle_tensor(tensor, axis=0, seed=None, name=None):
+def shuffle_tensor(tensor, axis=0, seed=None, name=None, differentiable=True):
     """
     Shuffles a `tensor` along a given `axis`.
-    For `axis = 0`, this is equivalent to tensorflow.random_shuffle.
+    For `axis = 0`, this is equivalent to tensorflow.random_shuffle but differentiable,
+    provided that `differentiable` is not set to False.
     """
+
+    def _shuffle_along_leading_axis(_tensor, _seed=None, _name=None):
+        with ContextSupermanager(name_scope=_name).manage():
+            len_along_leading_axis = shape(_tensor, symbolic=True)[0]
+            # Make a permutation of arange(len)
+            permutation = tf.random_shuffle(tf.range(len_along_leading_axis), seed=_seed)
+            # Shufle tensor by gathering by the random permutation
+            _shuffled_tensor = tf.gather(_tensor, permutation)
+        return _shuffled_tensor
+
+    shuffle_function = _shuffle_along_leading_axis if differentiable else \
+        lambda _tensor, _seed, _name: tf.random_shuffle(_tensor, seed=_seed, name=_name)
+
     # Save a transpose op if axis is 0 already
     if axis == 0:
-        return tf.random_shuffle(tensor, seed=seed, name=name)
+        return shuffle_function(tensor, _seed=seed, _name=name)
     else:
         # The axis we need to shuffle along must be the first axis. Transpose accordingly.
         tensor_ndim = ndim(tensor)
@@ -820,7 +834,8 @@ def shuffle_tensor(tensor, axis=0, seed=None, name=None):
         how_to_transpose[axis], how_to_transpose[0] = how_to_transpose[0], how_to_transpose[axis]
         transposed_tensor = transpose(tensor, perm=how_to_transpose)
         # Shuffle
-        shuffled_transposed_tensor = tf.random_shuffle(transposed_tensor, seed=seed, name=name)
+        # shuffled_transposed_tensor = tf.random_shuffle(transposed_tensor, seed=seed, name=name)
+        shuffled_transposed_tensor = shuffle_function(transposed_tensor, _seed=seed, _name=name)
         # Undo transpose
         shuffled_tensor = transpose(shuffled_transposed_tensor, perm=how_to_transpose)
         # Done.
