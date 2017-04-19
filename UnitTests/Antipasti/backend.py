@@ -1,6 +1,25 @@
 import pytest
+import threading
+
 import numpy as np
 import Antipasti.backend as A
+import tensorflow as tf
+
+
+def test_with_master_graph():
+    # Get master graph
+    master_graph = tf.get_default_graph()
+
+    # Make function in a different thread that checks if the graphs are same
+    @A.with_master_graph
+    def check():
+        graph_in_thread = tf.get_default_graph()
+        assert graph_in_thread is master_graph
+
+    # Make adn Start thread
+    thread = threading.Thread(target=check)
+    thread.start()
+    thread.join()
 
 
 def test_shuffle_tensor():

@@ -53,6 +53,10 @@ _DATATYPES = Config._DATATYPES
 # noinspection PyProtectedMember
 _FLOATX = Config._FLOATX
 
+# Default graph of the thread in which this module was imported
+# (i.e. where the following statement is being executed.)
+DEFAULT_GRAPH_OF_THIS_THREAD = tf.get_default_graph()
+
 
 class TFSession(object):
     """Produces the session used internally by Antipasti."""
@@ -107,6 +111,31 @@ class TFSession(object):
 
 # Define a session
 Session = TFSession()
+
+
+# Get default graph
+def get_default_graph(of_master_thread=True):
+    """
+    Returns the default graph. Master thread is the thread in which this module is
+    first imported; setting `of_master_thread` to True will result in this function
+    returning the default graph in the master thread, irrespective of which thread it's
+    being called from.
+    """
+    if of_master_thread:
+        return DEFAULT_GRAPH_OF_THIS_THREAD
+    else:
+        return tf.get_default_graph()
+
+
+def with_master_graph(func):
+    """
+    Decorator to call a `func` with the graph of the master thread (= master graph)
+    as default.
+    """
+    def new_func(*args, **kwargs):
+        with get_default_graph(of_master_thread=True).as_default():
+            return func(*args, **kwargs)
+    return new_func
 
 
 def reinitialize_all_variables(run_init_op=True, session=None):
@@ -818,6 +847,11 @@ def reshape(tensor, shape, name=None):
     return tf.reshape(tensor, shape=shape, name=name)
 
 
+def split(tensor, num_or_size_splits, axis=0, num_splits=None, name='split'):
+    """Alias for tensorflow.split, except that kwarg `num_splits` corresponds to `num`."""
+    return tf.split(tensor, num_or_size_splits, axis=axis, num=num_splits, name=name)
+
+
 # ------------------- TENSOR-ARITHMETIC -------------------
 
 
@@ -927,11 +961,23 @@ def divide(tensor1, tensor2, divtype=None, safe=False, eps=10e-8, name=None):
         return _ALLOWED_DIVTYPES_TO_DIVFUNCS.get(divtype)(tensor1, tensor2 + eps, name=name)
 
 
+def maximum(tensor1, tensor2, name=None):
+    """Alias for tensorflow.maximum."""
+    return tf.maximum(tensor1, tensor2, name=name)
+
+
+def minimum(tensor1, tensor2, name=None):
+    """Alias for tensorflow.minimum."""
+    return tf.minimum(tensor1, tensor2, name=name)
+
+
 def log(tensor, name=None):
+    """Alias for tensorflow.log."""
     return tf.log(tensor, name=name)
 
 
 def threshold_tensor(tensor, threshold, as_dtype=_FLOATX, name='threshold'):
+    """Thresholds a tensor at a given `threshold` and casts to `as_dtype`."""
     return greater(tensor, threshold, as_dtype=as_dtype, name=name)
 
 
