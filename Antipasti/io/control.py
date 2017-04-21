@@ -6,7 +6,7 @@ import time
 from .. import backend as A
 
 
-class VariableStream(object):
+class SwitchBoard(object):
     """Streams variable values from a YAML file."""
     # TODO Documentation
     def __init__(self, switches, yaml_file, session=None):
@@ -19,6 +19,15 @@ class VariableStream(object):
         self.switches = switches
         self.yaml_file = yaml_file
         self.session = session if session is not None else A.Session.session
+
+    def add_switch(self, switch_name, switch_variable=None, **switch_variable_init_kwargs):
+        # Make switch variable if not provided
+        if switch_variable is None:
+            switch_variable = A.variable(**switch_variable_init_kwargs)
+        # Add variable to switches
+        self.switches.update({switch_name: switch_variable})
+        # Return the variable made
+        return switch_variable
 
     @property
     def file_has_changed(self):
