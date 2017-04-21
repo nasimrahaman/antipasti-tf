@@ -864,7 +864,12 @@ def reshape(tensor, shape, name=None):
 
 def split(tensor, num_or_size_splits, axis=0, num_splits=None, name='split'):
     """Alias for tensorflow.split, except that kwarg `num_splits` corresponds to `num`."""
-    return tf.split(tensor, num_or_size_splits, axis=axis, num=num_splits, name=name)
+    try:
+        # API r1.0
+        return tf.split(tensor, num_or_size_splits, axis=axis, num=num_splits, name=name)
+    except TypeError:
+        # API r0.12
+        return tf.split(value=tensor, num_split=num_or_size_splits, split_dim=axis, name=name)
 
 
 # ------------------- TENSOR-ARITHMETIC -------------------
@@ -878,7 +883,7 @@ def add_n(tensors, name=None):
 def mean_n(tensors, name=None):
     """Returns the mean of all tensors in `tensors`."""
     num_tensors = len(tensors)
-    return multiply((1./num_tensors), add_n(tensors), name=name)
+    return multiply((1. / num_tensors), add_n(tensors), name=name)
 
 
 def reduce_(tensor, mode, axis=None, keep_dims=False, name=None):
