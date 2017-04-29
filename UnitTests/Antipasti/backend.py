@@ -75,6 +75,20 @@ def test_shuffle_tensor():
         shuffled_tensor = A.shuffle_tensor(tensor, axis=4)
 
 
+def test_normalize():
+    # Case 1: No mean and average known in advance
+    # (other test cases should be covered in tensorflow)
+    tensor = A.placeholder(shape=[None] * 2)
+    normalized_tensor = A.normalize(tensor)
+
+    rng = np.random.RandomState(42)
+    numerical_tensor = rng.uniform(size=(10, 10), low=-1., high=5.)
+    numerical_normalized_tensor = A.run(normalized_tensor, {tensor: numerical_tensor})
+
+    assert np.allclose(np.mean(numerical_normalized_tensor), 0., atol=1e-7)
+    assert np.allclose(np.std(numerical_normalized_tensor), 1., atol=1e-3)
+
+
 def test_sorensen_dice_distance():
     _y = np.zeros(shape=(5,))
     _yt = np.zeros(shape=(5,))

@@ -919,6 +919,20 @@ def reduce_(tensor, mode, axis=None, keep_dims=False, name=None):
     return reduce_fn(tensor, axis=axis, keep_dims=keep_dims, name=name)
 
 
+def moments(tensor, axis=None, shift=None, keep_dims=False, name=None):
+    """
+    See tensorflow.nn.moments. The `axis` can be left as None to compute the moments over all axes.
+    This requires the tensor ndim to be known.
+    """
+    if axis is None:
+        # Parse axis
+        tensor_ndim = ndim(tensor)
+        assert tensor_ndim is not None, \
+            "Can't have axis == None when the ndim of the tensor is not known."
+        axis = range(tensor_ndim)
+    return tf.nn.moments(tensor, axes=axis, shift=shift, keep_dims=keep_dims, name=name)
+
+
 def multiply(*tensors, **kwargs):
     op_name = kwargs.get('name')
     return reduce(lambda x, y: tf.multiply(x, y, name=op_name), tensors)
@@ -999,6 +1013,23 @@ def log(tensor, name=None):
 def threshold_tensor(tensor, threshold, as_dtype=_FLOATX, name='threshold'):
     """Thresholds a tensor at a given `threshold` and casts to `as_dtype`."""
     return greater(tensor, threshold, as_dtype=as_dtype, name=name)
+
+
+def normalize(tensor, mean=None, variance=None, offset=None, scale=None, eps=1e-3):
+    """
+    See `tensorflow.nn.batch_normalization`. `mean` and `variance` are computed automatically
+    if not provided.
+    """
+    if mean is None or variance is None:
+        # Compute moments
+        mean, variance = moments(tensor)
+    # Normalize
+    normalized_tensor = tf.nn.batch_normalization(tensor,
+                                                  mean=mean, variance=variance,
+                                                  offset=offset, scale=scale,
+                                                  variance_epsilon=eps)
+    # Done
+    return normalized_tensor
 
 
 # ------------------- AUTO-DIFFERENTIATION -------------------
