@@ -9,14 +9,14 @@ from .. import backend as A
 class SwitchBoard(object):
     """Streams variable values from a YAML file."""
     # TODO Documentation
-    def __init__(self, switches, yaml_file, session=None):
+    def __init__(self, switches=None, yaml_file=None, session=None):
         # Private
         self._file_last_modified = 0
         self._observer_thread = None
         self._stop_observing = threading.Event()
         self._latency = 0.3
         # Public
-        self.switches = switches
+        self.switches = switches if switches is not None else {}
         self.yaml_file = yaml_file
         self.session = session if session is not None else A.Session.session
 
@@ -28,6 +28,31 @@ class SwitchBoard(object):
         self.switches.update({switch_name: switch_variable})
         # Return the variable made
         return switch_variable
+
+    def get_switch(self, switch_name, default=None):
+        return self.switches.get(switch_name, default)
+
+    def add_or_get_switch(self, switch_name, switch_variable=None, **switch_variable_init_kwargs):
+        # Try to get switch
+        _switch_var = self.get_switch(switch_name)
+        if _switch_var is not None:
+            # Got something
+            return _switch_var
+        else:
+            # Got nothing. Add switch and return
+            return self.add_switch(switch_name, switch_variable, **switch_variable_init_kwargs)
+
+    def bind_to_yaml_file(self, yaml_file):
+        assert isinstance(yaml_file, str), "YAML file name must be a string."
+        self.yaml_file = yaml_file
+
+    @property
+    def bound_to_file(self):
+        return self.yaml_file is not None
+
+    @property
+    def switch_count(self):
+        return len(self.switches)
 
     @property
     def file_has_changed(self):
@@ -70,6 +95,7 @@ class SwitchBoard(object):
         return self._observer_thread is not None and self._observer_thread.is_alive()
 
     def start_observer(self):
+        assert self.bound_to_file, "No YAML file provided."
         self._observer_thread = threading.Thread(target=self._observe)
         self._observer_thread.start()
 
