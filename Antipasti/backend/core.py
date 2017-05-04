@@ -763,6 +763,10 @@ def is_tf_tensor(value):
     return isinstance(value, tf.Tensor)
 
 
+def is_tf_tensor_or_variable(value):
+    return isinstance(value, (tf.Tensor, tf.Variable))
+
+
 def concatenate(tensors, axis=0, name='concat'):
     """
     Concatenates multiple tensors along a given axis.
@@ -1030,6 +1034,55 @@ def normalize(tensor, mean=None, variance=None, offset=None, scale=None, eps=1e-
                                                   variance_epsilon=eps)
     # Done
     return normalized_tensor
+
+
+def scale(tensor, to_range, from_range=None, name=None):
+    """
+    Scales a tensor to a given range `to_range`. The initial range `from_range` can be
+    optionally provided, but it defaults to [tensor.min(), tensor.max()] if omitted.
+
+    :type tensor: tensorflow.Tensor or tensorflow.Variable
+    :param tensor: Tensor to scale.
+
+    :type to_range: tuple or list
+    :param to_range: Target range.
+
+    :type from_range: tuple or list
+    :param from_range: Source range. Defaults to [tensor.min(), tensor.max()] if omitted.
+
+    :type name: str
+    :param name: Name scope to use.
+
+    :return: Scaled tensor.
+    """
+    try:
+        to_range = list(to_range)
+    except TypeError:
+        raise TypeError("Argument `to_range` must be list-like, "
+                        "but {} could not be converted to a list.".
+                        format(to_range.__class__.__name__))
+
+    if from_range is not None:
+        try:
+            from_range = list(from_range)
+        except TypeError:
+            raise TypeError("Argument `from_range` must be list-like, "
+                            "but {} could not be converted to a list.".
+                            format(from_range.__class__.__name__))
+    else:
+        # Get default range
+        with ContextSupermanager(name_scope=name).manage():
+            from_range = [reduce_(tensor, 'min'), reduce_(tensor, 'max')]
+
+    old_min, old_max = from_range
+    new_min, new_max = to_range
+
+    with ContextSupermanager(name_scope=name).manage():
+        old_range = old_max - old_min
+        new_range = new_max - new_min
+        scaled_tensor = (((tensor - old_min) * new_range) / old_range) + new_min
+
+    return scaled_tensor
 
 
 # ------------------- AUTO-DIFFERENTIATION -------------------
