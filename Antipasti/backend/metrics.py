@@ -17,14 +17,14 @@ def binary_cross_entropy(prediction, target, weights=None, with_logits=True, agg
     If `prediction` and `target` are 4 or 5 dimensional image tensors, they're
     converted to matrices with `Antipasti.backend.image_tensor_to_matrix` function.
 
-    :type prediction: tensorflow.Tensor
+    :type prediction: tensorflow.Tensor or tensorflow.Variable
     :param prediction: Prediction tensor. Values in it must remain between 0 and 1
                        if `with_logits` is set to `False`.
 
-    :type target: tensorflow.Tensor
+    :type target: tensorflow.Tensor or tensorflow.Variable
     :param target: Target tensor.
 
-    :type weights: tensorflow.Tensor
+    :type weights: tensorflow.Tensor or tensorflow.Variable
     :param weights: Pixel-wise weight tensor. Should have the same shape as `prediction`
                     or `target`.
 
@@ -78,14 +78,14 @@ def sorensen_dice_distance(prediction, target, weights=None, with_logits=True, a
     applied to the predictions. The keyword `aggregate` has to be true by definition of the
     coefficient.
 
-    :type prediction: tensorflow.Tensor
+    :type prediction: tensorflow.Tensor or tensorflow.Variable
     :param prediction: Prediction tensor.
                        Values must be between 0 and 1 if `with_logits` is set to False.
 
-    :type target: tensorflow.Tensor
+    :type target: tensorflow.Tensor or tensorflow.Variable
     :param target: Target tensor.
 
-    :type weights: tensorflow.Tensor
+    :type weights: tensorflow.Tensor or tensorflow.Variable
     :param weights: Pixel-wise weight tensor. Should have the same shape as `prediction`
                     or `target`.
 
@@ -142,14 +142,14 @@ def tversky_distance(prediction, target, weights=None, alpha=1., beta=1., with_l
     applied to the predictions. The keyword `aggregate` has to be true by definition of the
     Tversky index.
 
-    :type prediction: tensorflow.Tensor
+    :type prediction: tensorflow.Tensor or tensorflow.Variable
     :param prediction: Prediction tensor.
                        Values must be between 0 and 1 if `with_logits` is set to False.
 
-    :type target: tensorflow.Tensor
+    :type target: tensorflow.Tensor or tensorflow.Variable
     :param target: Target tensor.
 
-    :type weights: tensorflow.Tensor
+    :type weights: tensorflow.Tensor or tensorflow.Variable
     :param weights: Pixel-wise weight tensor. Should have the same shape as `prediction`
                     or `target`.
 
@@ -206,16 +206,16 @@ def binary_accuracy(prediction, target, prediction_threshold=0.5, target_thresho
     The `prediction` and `target` are thresholded at `prediction_threshold` and `target_threshold`
     respectively.
 
-    :type prediction: tensorflow.Tensor
+    :type prediction: tensorflow.Tensor or tensorflow.Variable
     :param prediction: Prediction tensor.
 
-    :type target: tensorflow.Tensor
+    :type target: tensorflow.Tensor or tensorflow.Variable
     :param target: Target tensor.
 
-    :type prediction_threshold: float or tensorflow.Tensor
+    :type prediction_threshold: float or tensorflow.Tensor or tensorflow.Variable
     :param prediction_threshold: Threshold for prediction.
 
-    :type target_threshold: float or tensorflow.Tensor
+    :type target_threshold: float or tensorflow.Tensor or tensorflow.Variable
     :param target_threshold: Threshold for target.
 
     :return: Binary accuracy scalar.
@@ -238,7 +238,7 @@ def frequency_distribution(tensor, normalize=True, min_tensor_value=0., max_tens
     """
     Computes the frequency distribution of `tensor`.
 
-    :type tensor: tensorflow.Tensor
+    :type tensor: tensorflow.Tensor or tensorflow.Variable
     :param tensor: A tensor.
 
     :type normalize: bool
@@ -247,10 +247,10 @@ def frequency_distribution(tensor, normalize=True, min_tensor_value=0., max_tens
                       distribution to avoid having zeros in the output distribution
                       vector to make it numerically stable for e.g. entropy computations.
 
-    :type min_tensor_value: float or tensorflow.Tensor
+    :type min_tensor_value: float or tensorflow.Tensor or tensorflow.Variable
     :param min_tensor_value: The smallest possible value in `tensor`.
 
-    :type max_tensor_value: float or tensorflow.Tensor
+    :type max_tensor_value: float or tensorflow.Tensor or tensorflow.Variable
     :param max_tensor_value: The largest possible value in `tensor`.
 
     :type n_bins: int
@@ -281,13 +281,13 @@ def shannon_entropy(tensor, min_tensor_value=0., max_tensor_value=1., n_bins=10)
     """
     Computes the shannon entropy of the frequency distribution of `tensor`.
 
-    :type tensor: tensorflow.Tensor
+    :type tensor: tensorflow.Tensor or tensorflow.Variable
     :param tensor: A tensor.
 
-    :type min_tensor_value: float or tensorflow.Tensor
+    :type min_tensor_value: float or tensorflow.Tensor or tensorflow.Variable
     :param min_tensor_value: The smallest possible value in `tensor`.
 
-    :type max_tensor_value: float or tensorflow.Tensor
+    :type max_tensor_value: float or tensorflow.Tensor or tensorflow.Variable
     :param max_tensor_value: The largest possible value in `tensor`.
 
     :type n_bins: int
