@@ -113,6 +113,12 @@ class TFSession(object):
 Session = TFSession()
 
 
+# Check if a given object is a session
+def is_tf_session(value):
+    """Check if a given object `value` is a tensorflow session."""
+    return isinstance(value, tf.Session)
+
+
 # Get default graph
 def get_default_graph(of_master_thread=True):
     """
@@ -1007,6 +1013,18 @@ def maximum(tensor1, tensor2, name=None):
 def minimum(tensor1, tensor2, name=None):
     """Alias for tensorflow.minimum."""
     return tf.minimum(tensor1, tensor2, name=name)
+
+
+def clip_by_value(tensor, tensor_min, tensor_max, name=None):
+    """Alias for tensorflow.clip_by_value."""
+    return tf.clip_by_value(tensor,
+                            clip_value_min=tensor_min, clip_value_max=tensor_max,
+                            name=name)
+
+
+def abs(tensor, name=None):
+    """Alias for tensorflow.abs."""
+    return tf.abs(tensor, name=name)
 
 
 def log(tensor, name=None):

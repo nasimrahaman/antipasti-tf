@@ -15,10 +15,24 @@ class SwitchBoard(object):
         self._observer_thread = None
         self._stop_observing = threading.Event()
         self._latency = 0.3
+        self._session = None
         # Public
         self.switches = switches if switches is not None else {}
         self.yaml_file = yaml_file
-        self.session = session if session is not None else A.Session.session
+        self.session = session
+
+    @property
+    def session(self):
+        if self._session is None:
+            self._session = A.Session.session
+        return self._session
+
+    @session.setter
+    def session(self, value):
+        if value is not None:
+            assert A.is_tf_session(value), \
+                "Given {} is not a tensorflow Session.".format(value.__class__.__name__)
+            self._session = value
 
     def add_switch(self, switch_name, switch_variable=None, **switch_variable_init_kwargs):
         # Make switch variable if not provided
