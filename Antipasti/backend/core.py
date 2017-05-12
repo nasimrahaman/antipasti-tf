@@ -9,10 +9,12 @@ import types
 from argparse import Namespace
 from collections import OrderedDict
 from functools import partial
+import sys
 
 import numpy as np
 import tensorflow as tf
 from contextlib2 import ExitStack, contextmanager
+from inspect import getargspec
 
 from ..legacy import pykit as py
 from ..utilities import pyutils2 as py2
@@ -505,6 +507,75 @@ def call_in_managers(context_managers=None):
                 output = function(*args, **kwargs)
             return output
         return decorated_function
+    return _decorator
+
+
+# ------------------- PYFUNC-UTILITIES -------------------
+
+
+def as_tf_op(output_dtypes='float32', shape_func=None, stateful=True, name=None):
+    """
+    Decorator to convert a python function to a tensorflow op.
+
+    Example:
+
+        ```python
+
+        @as_tf_op(['float32', 'float32'], stateful=False, name='py_cat')
+        def my_func(x, y):
+            return np.concatenate((x, y), axis=0), np.concatenate((y, x), axis=0)
+
+        x = tf.placeholder(tf.float32)
+        y = tf.placeholder(tf.float32)
+        out1, out2 = my_func(x, y)
+
+        ```
+
+    :type output_dtypes: str or list of str or tuple of str
+    :param output_dtypes: Datatypes of the output. If function returns multiple outputs,
+                          this should be a list or a tuple of the same length.
+
+    :type shape_func: callable
+    :param shape_func: Optional function for shape inference that returns the output shape given
+                       the known input shapes.
+
+    :type stateful: bool
+    :param stateful: To indicate if the function has an internal state. See `tensorflow.py_func`.
+
+    :type name: str
+    :param name: Name of the op.
+    """
+    def _decorator(fn):
+        # Parse output dtypes
+        _output_dtypes = py.obj2list(output_dtypes)
+        _output_dtypes = py.delist([to_tf_dtype(_dtype) for _dtype in _output_dtypes])
+
+        # Make op
+        def op(*args):
+            # Get op outputs
+            op_outputs = tf.py_func(fn, list(args), _output_dtypes, stateful=stateful, name=name)
+            # Set shape if possible
+            if shape_func is not None:
+                assert callable(shape_func), "Shape inference function must be callable."
+                # Get input shapes
+                input_shapes = py.delistlistoflists([shape(arg) for arg in args])
+                try:
+                    output_shapes = shape_func(input_shapes)
+                    # Set shapes
+                    for output_shape, output in zip(py.list2listoflists(output_shapes),
+                                                    py.obj2list(op_outputs)):
+                        output.set_shape(output_shape)
+                except Exception as e:
+                    # Get extra message.
+                    msg = "Output shape could not be inferred. " \
+                          "The original exception message follows. "
+                    # Raise exception but preserve traceback
+                    raise type(e)(msg + str(e), sys.exc_info()[2])
+                # Done.
+            return op_outputs
+        # Done.
+        return op
+    # Done.
     return _decorator
 
 

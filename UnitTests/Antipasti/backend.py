@@ -113,5 +113,43 @@ def test_tversky_distance():
     assert _d == 0.
 
 
+def test_as_tf_op():
+    # Case 1: Check with shapes
+    @A.as_tf_op(['float32', 'float32'], stateful=False, name='py_cat',
+                shape_func=(lambda shapes: 2 * [[shapes[0][0] + shapes[1][0]] + shapes[0][1:]]))
+    def my_func(x, y):
+        return np.concatenate((x, y), axis=0), np.concatenate((y, x), axis=0)
+
+    _x = A.placeholder(shape=[1, 1])
+    _y = A.placeholder(shape=[1, 1])
+
+    out1, out2 = my_func(_x, _y)
+    # Check if tensor
+    assert A.is_tf_tensor_or_variable(out1)
+    assert A.is_tf_tensor_or_variable(out2)
+    # Check shape
+    assert A.shape(out1) == A.shape(out2) == [2, 1]
+
+    # Case 2: Check with unexpected shapes
+    _x = A.placeholder()
+    _y = A.placeholder()
+
+    with pytest.raises(TypeError):
+        my_func(_x, _y)
+
+    # Case 3: check without shapes
+    @A.as_tf_op(['float32', 'float32'], stateful=False, name='py_cat')
+    def my_func(x, y):
+        return np.concatenate((x, y), axis=0), np.concatenate((y, x), axis=0)
+
+    _x = A.placeholder()
+    _y = A.placeholder()
+
+    out1, out2 = my_func(_x, _y)
+    # Check if tensor
+    assert A.is_tf_tensor_or_variable(out1)
+    assert A.is_tf_tensor_or_variable(out2)
+
+
 if __name__ == '__main__':
     pytest.main([__file__])
